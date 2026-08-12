@@ -78,7 +78,7 @@ async function startGame() {
     // Hiện thông báo đang dùng AI sinh câu hỏi (AI mất vài giây suy nghĩ)
     const btn = document.getElementById('start-btn');
     const oldHtml = btn.innerHTML;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ĐANG TẠO BỘ TỪ ĐIỂN MỚI...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> ĐANG VÀO GAME XIN CHỜ MỘT CHÚT';
     btn.disabled = true;
     btn.style.opacity = '0.7';
 
@@ -124,7 +124,7 @@ async function startGame() {
         }
     } catch (err) {
         // Lỗi kết nối server hoặc lỗi mạng
-        alert('❌ Không thể khởi tạo phiên bản! (' + err + ')');
+        alert('Không thể khởi tạo phiên bản! (' + err + ')');
         console.error('Lỗi:', err);
     } finally {
         // Trả lại trạng thái cho nút
@@ -269,7 +269,7 @@ async function useLifeline(type) {
             if (wData.success) {
                 const bonusCount = wData.bonus_lifelines;
                 if (bonusCount <= 0) {
-                    addBotMessage('⚠️ Bạn đã dùng quyền trợ giúp này và không còn lượt trợ giúp dự phòng. Hãy mua thêm tại cửa hàng!');
+                    addBotMessage('Bạn đã dùng quyền trợ giúp này và không còn lượt trợ giúp dự phòng. Hãy mua thêm tại cửa hàng!');
                     alert('⚠️ Bạn đã dùng quyền trợ giúp này và không còn lượt trợ giúp dự phòng nào trong ví.');
                     return;
                 }

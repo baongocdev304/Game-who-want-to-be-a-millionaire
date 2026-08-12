@@ -25,11 +25,11 @@ from email.mime.text import MIMEText
 from email.header import Header
 from datetime import datetime, timedelta
 from functools import wraps
-from flask import Flask, jsonify, request, render_template, send_from_directory, session, redirect
+from flask import Flask, jsonify, request, render_template, send_from_directory, session, redirect, g
 from flask_cors import CORS
 from dotenv import load_dotenv
 from google import genai
-from database import get_connection, SQL_CREATE_TABLES, create_schema
+from database import get_connection, release_connection, SQL_CREATE_TABLES, create_schema
 
 
 
@@ -117,9 +117,17 @@ WEBHOOK_SECRET     = clean_env(os.environ.get('WEBHOOK_SECRET'), 'dev-secret-123
 # Cho phép Cross-Origin
 CORS(app, supports_credentials=True)
 
-# === LƯU TRRỮNG THÔNG TIN NGƯỚI DÙNG (DATABASE) ===
+# === LƯU TRỮ THÔNG TIN NGƯỚI DÙNG (DATABASE) ===
 def get_db():
-    return get_connection()
+    if 'db' not in g:
+        g.db = get_connection()
+    return g.db
+
+@app.teardown_appcontext
+def close_db(error):
+    db = g.pop('db', None)
+    if db is not None:
+        release_connection(db)
 
 def get_or_create_wallet(cur, user_id):
     cur.execute("SELECT game_turns, bonus_lifelines FROM user_wallets WHERE user_id = %s", (user_id,))
@@ -376,7 +384,7 @@ def register():
         if conn: conn.rollback()
         return jsonify({'success': False, 'error': f'Lỗi hệ thống: {str(e)}'}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 
 # === API: Quên mật khẩu - Bước 1: Gửi mã ===
@@ -421,7 +429,7 @@ def forgot_password():
         print(f"Lỗi forgot-password: {e}")
         return jsonify({'success': False, 'error': 'Lỗi máy chủ nội bộ!'}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: Quên mật khẩu - Bước 2: Xác thực & Đặt lại ===
 @app.route('/api/auth/verify-reset-code', methods=['POST'])
@@ -465,7 +473,7 @@ def verify_reset_code():
         if conn: conn.rollback()
         return jsonify({'success': False, 'error': 'Lỗi hệ thống!'}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: Đăng nhập ===
 
@@ -502,7 +510,7 @@ def login():
     except Exception as e:
         return jsonify({'success': False, 'error': f'Lỗi hệ thống: {str(e)}'}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: Đăng xuất ===
 @app.route('/api/auth/logout', methods=['POST'])
@@ -555,7 +563,7 @@ def start_game():
         if conn: conn.rollback()
         return jsonify({'success': False, 'error': f'Lỗi hệ thống ví: {str(e)}'}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
     # Lấy dữ liệu từ request
     data = request.get_json()
@@ -637,7 +645,7 @@ def record_game_result(user_id, result, score, duration, metadata=None):
         print(f"Lỗi khi ghi lịch sử: {e}")
         conn.rollback()
     finally:
-        conn.close()
+        pass
 
 
 
@@ -782,7 +790,7 @@ def use_lifeline():
             if conn: conn.rollback()
             return jsonify({'success': False, 'error': f'Lỗi hệ thống ví: {str(e)}'}), 500
         finally:
-            if conn: conn.close()
+            if conn: pass
     else:
         # Đánh dấu đã dùng
         session['lifelines'][lifeline_type] = False
@@ -1133,7 +1141,7 @@ def get_user_history():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        conn.close()
+        pass
 
 # === API: Bảng xếp hạng (DATABASE) ===
 @app.route('/api/leaderboard', methods=['GET'])
@@ -1156,7 +1164,7 @@ def get_leaderboard():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        conn.close()
+        pass
 
 # (Route add_to_leaderboard cũ có thể xóa vì đã có record_game_result ghi trực tiếp)
 
@@ -1198,7 +1206,7 @@ def get_shop_wallet():
         if conn: conn.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: LỊCH SỬ MUA HÀNG ===
 @app.route('/api/shop/history', methods=['GET'])
@@ -1229,7 +1237,7 @@ def get_shop_history():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: TẠO ĐƠN HÀNG MỚI ===
 @app.route('/api/shop/create-order', methods=['POST'])
@@ -1279,7 +1287,7 @@ def create_shop_order():
         if conn: conn.rollback()
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: KIỂM TRA TRẠNG THÁI ĐƠN HÀNG (POLLING) ===
 @app.route('/api/shop/check-status', methods=['GET'])
@@ -1304,7 +1312,7 @@ def check_order_status():
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 # === API: KIỂM TRA TRẠNG THÁI HỆ THỐNG (DEBUG) ===
 APP_VERSION = "v3-regex-fix-20260530"
@@ -1347,7 +1355,7 @@ def debug_status():
         except Exception as e:
             result['db_error'] = str(e)
         finally:
-            conn.close()
+            pass
     
     # Test regex against sample content
     test_content = "NHAN TU 06300420066666 TRACE 440721 ND AMT1780089184466B9A"
@@ -1402,7 +1410,7 @@ def debug_webhooks():
         except Exception as e:
             result['db_error'] = str(e)
         finally:
-            conn.close()
+            pass
     return jsonify(result)
 
 # === API: CHI TIẾT GIAO DỊCH (DEBUG) ===
@@ -1450,7 +1458,7 @@ def debug_transaction(ref):
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        conn.close()
+        pass
 
 # === API: WEBHOOK XỬ LÝ THANH TOÁN ===
 @app.route('/api/shop/webhook', methods=['POST'])
@@ -1751,7 +1759,7 @@ def shop_webhook():
         log_webhook_attempt(auth_info['is_authenticated'] or is_local, auth_info['step'] if not is_local else 'Local bypass', payment_ref, False, f"Exception: {str(e)}", 500)
         return jsonify({'success': False, 'error': str(e)}), 500
     finally:
-        if conn: conn.close()
+        if conn: pass
 
 
 # === KHỞI TẠO DATABASE KHI KHỞI ĐỘNG (Dành cho cả Render / Gunicorn) ===
@@ -1760,7 +1768,7 @@ try:
         conn = get_connection()
         if conn:
             create_schema(conn)
-            conn.close()
+            pass
             print("✅ Đã kiểm tra và khởi tạo database schema thành công!")
         else:
             print("❌ Không thể kết nối database để khởi tạo schema!")
@@ -1773,13 +1781,13 @@ if __name__ == '__main__':
     print("=" * 50)
     print("🎮 AI LÀ TRIỆU PHÚ - SERVER")
     print("=" * 50)
-    print("🌐 Web:  http://localhost:5001")
+    print("🌐 Web:  http://localhost:5002")
     print("📱 App:  Mở link trên bằng điện thoại để cài PWA")
     print("=" * 50)
 
     # host='0.0.0.0' = cho phép truy cập từ thiết bị khác trong cùng mạng WiFi
     # debug=True = tự động reload khi sửa code
     
-    app.run(host='0.0.0.0', port=5001, debug=True)
+    app.run(host='0.0.0.0', port=5002, debug=True)
 
 

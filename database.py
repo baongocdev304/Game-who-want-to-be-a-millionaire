@@ -4,6 +4,7 @@ Kết nối PostgreSQL, tạo tables: users, user_passwords, rankings, game_hist
 """
 
 import psycopg2
+from psycopg2 import pool
 import bcrypt
 import os
 from psycopg2 import sql
@@ -13,31 +14,52 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ============================================================
-# HÀM: KẾT NỐI DATABASE
+# KẾT NỐI DATABASE BẰNG THREADED CONNECTION POOL
 # ============================================================
-def get_connection():
-    """Tạo và trả về kết nối tới PostgreSQL."""
+db_pool = None
+
+def init_pool():
+    global db_pool
+    if db_pool is not None:
+        return
     try:
-        # Ưu tiên dùng DATABASE_URL từ .env
         db_url = os.getenv('DATABASE_URL')
-        if db_url:
-            conn = psycopg2.connect(db_url)
+        db_host = os.getenv('DB_HOST')
+        # Ưu tiên dsn nếu có DATABASE_URL không bị lệch host với DB_HOST
+        if db_url and (not db_host or db_host == 'localhost' or 'localhost' not in db_url or db_host in db_url):
+            db_pool = psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=20, dsn=db_url)
         else:
-            # Fallback nếu không có URL
-            conn = psycopg2.connect(
+            db_pool = psycopg2.pool.ThreadedConnectionPool(
+                minconn=1,
+                maxconn=20,
                 host=os.getenv('DB_HOST', 'localhost'),
                 port=os.getenv('DB_PORT', '5432'),
                 database=os.getenv('DB_NAME', 'millionaire'),
                 user=os.getenv('DB_USER', 'postgres'),
                 password=os.getenv('DB_PASSWORD', '123456')
             )
-        # print("✅ Kết nối database thành công!")
-        return conn
-
     except Exception as e:
-        print(f"❌ Không thể kết nối database: {e}")
-        print("Mẹo: Hãy kiểm tra DATABASE_URL trong file .env hoặc đảm bảo PostgreSQL đang chạy.")
-        return None
+        print(f"❌ Lỗi khởi tạo DB Pool: {e}")
+
+def get_connection():
+    """Lấy kết nối từ Pool."""
+    if db_pool is None:
+        init_pool()
+    if db_pool:
+        try:
+            return db_pool.getconn()
+        except Exception as e:
+            print(f"❌ Lỗi lấy kết nối: {e}")
+            return None
+    return None
+
+def release_connection(conn):
+    """Trả kết nối về Pool sau khi dùng xong."""
+    if db_pool and conn:
+        try:
+            db_pool.putconn(conn)
+        except Exception as e:
+            print(f"❌ Lỗi trả kết nối: {e}")
 
 # ============================================================
 # SQL: TẠO TABLES

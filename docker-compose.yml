@@ -1,0 +1,69 @@
+services:
+  # ============================================================
+  # 1. DATABASE SERVICE: PostgreSQL 16
+  # ============================================================
+  db:
+    image: postgres:16-alpine
+    container_name: millionaire_db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-millionaire}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-millionaire}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ============================================================
+  # 2. WEB APP SERVICE: Flask Backend + Gunicorn WSGI
+  # ============================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: millionaire_web
+    restart: always
+    ports:
+      - "5001:5001"
+    env_file:
+      - .env
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-millionaire}
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD:-123456}
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-123456}@db:5432/${DB_NAME:-millionaire}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # ============================================================
+  # 3. NGROK SERVICE: Webhook Tunneling (Khởi chạy với profile tunnel)
+  # Lệnh: docker compose --profile tunnel up -d
+  # ============================================================
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: millionaire_ngrok
+    restart: unless-stopped
+    command: http web:5001
+    ports:
+      - "4040:4040"
+    environment:
+      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN}
+    depends_on:
+      - web
+    profiles:
+      - tunnel
+
+volumes:
+  postgres_data:
+    driver: local

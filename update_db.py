@@ -7,7 +7,8 @@ load_dotenv()
 def update_db():
     try:
         db_url = os.getenv('DATABASE_URL')
-        if db_url:
+        db_host = os.getenv('DB_HOST')
+        if db_url and (not db_host or db_host == 'localhost' or 'localhost' not in db_url or db_host in db_url):
             conn = psycopg2.connect(db_url)
         else:
             conn = psycopg2.connect(
