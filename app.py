@@ -135,6 +135,10 @@ def get_or_create_wallet(cur, user_id):
     if row:
         return dict(row)
     else:
+        # Kiểm tra xem user_id có tồn tại trong bảng users không
+        cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+        if not cur.fetchone():
+            raise ValueError(f"User ID {user_id} không tồn tại trong hệ thống.")
         cur.execute("""
             INSERT INTO user_wallets (user_id, game_turns, bonus_lifelines)
             VALUES (%s, 3, 0)
@@ -150,11 +154,28 @@ def check_password(pw, hashed):
 
 
 def login_required(f):
-    """Decorator bảo vệ route - yêu cầu đăng nhập trước"""
+    """Decorator bảo vệ route - yêu cầu đăng nhập trước và kiểm tra user_id hợp lệ"""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'username' not in session:
+        if 'username' not in session or 'user_id' not in session:
+            if request.path.startswith('/api/'):
+                return jsonify({'success': False, 'error': 'Vui lòng đăng nhập!'}), 401
             return redirect('/auth')
+
+        user_id = session.get('user_id')
+        conn = get_db()
+        if conn:
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+                    if not cur.fetchone():
+                        session.clear()
+                        if request.path.startswith('/api/'):
+                            return jsonify({'success': False, 'error': 'Phiên đăng nhập hết hạn hoặc không hợp lệ. Vui lòng đăng nhập lại!'}), 401
+                        return redirect('/auth')
+            except Exception:
+                pass
+
         return f(*args, **kwargs)
     return decorated
 
