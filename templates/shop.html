@@ -158,6 +158,17 @@ body{
 }
 .btn-back:hover{background:rgba(255,58,242,.2);}
 
+.btn-logout-shop{
+  display:flex;align-items:center;gap:6px;
+  background:rgba(255,107,53,.1);
+  border:3px dashed var(--orange, #ff6b35);border-radius:9999px;
+  padding:7px 16px;color:var(--orange, #ff6b35);
+  font-family:'DM Sans',sans-serif;font-size:.82rem;font-weight:700;
+  cursor:pointer;transition:.3s;letter-spacing:1px;text-transform:uppercase;
+  text-decoration:none;
+}
+.btn-logout-shop:hover{background:rgba(255,107,53,.25);transform:scale(1.04);}
+
 /* ── HERO ── */
 .hero{
   text-align:center;padding:48px 20px 32px;
@@ -532,6 +543,7 @@ body{
     </div>
   </div>
   <a href="/" class="btn-back">← Về trang chơi</a>
+  <button class="btn-logout-shop" id="btn-logout" onclick="doLogout()">🚪 Đăng xuất</button>
 </nav>
 
 <!-- HERO -->
@@ -904,6 +916,12 @@ window.addEventListener('scroll', () => {
   if (slowLayer) slowLayer.style.transform = `translate3d(0, ${scrolled * -0.06}px, 0)`;
   if (fastLayer) fastLayer.style.transform = `translate3d(0, ${scrolled * -0.15}px, 0)`;
 });
+
+async function doLogout() {
+  if (!confirm('Bạn có chắc muốn đăng xuất?')) return;
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/auth';
+}
 </script>
 </body>
 </html>

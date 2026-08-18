@@ -396,6 +396,20 @@ def register():
                 VALUES (%s, %s)
             """, (user_id, hashed))
 
+            # Khởi tạo rankings cho user mới
+            cur.execute("""
+                INSERT INTO rankings (user_id, total_score, total_wins, total_losses, rank_title, rank_points)
+                VALUES (%s, 0, 0, 0, 'Newcomer', 0)
+                ON CONFLICT (user_id) DO NOTHING
+            """, (user_id,))
+
+            # Khởi tạo ví (lượt chơi) cho user mới
+            cur.execute("""
+                INSERT INTO user_wallets (user_id, game_turns, bonus_lifelines)
+                VALUES (%s, 3, 0)
+                ON CONFLICT (user_id) DO NOTHING
+            """, (user_id,))
+
             conn.commit()
             session['username'] = username
             session['user_id'] = user_id
@@ -403,9 +417,10 @@ def register():
             return jsonify({'success': True})
     except Exception as e:
         if conn: conn.rollback()
+        print(f"❌ Lỗi register: {e}")
         return jsonify({'success': False, 'error': f'Lỗi hệ thống: {str(e)}'}), 500
     finally:
-        if conn: pass
+        pass  # Connection được Flask tự release qua teardown_appcontext
 
 
 # === API: Quên mật khẩu - Bước 1: Gửi mã ===

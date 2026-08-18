@@ -142,6 +142,25 @@ body{
 ═══════════════════════════════════ */
 #welcome-screen{justify-content:flex-start;padding:40px 20px;}
 
+/* Nút đăng xuất cố định góc trên phải */
+.logout-fixed{
+  position:fixed;
+  top:18px;right:18px;
+  z-index:999;
+  background:rgba(255,107,53,.12);
+  border:2px dashed var(--orange);
+  border-radius:9999px;
+  padding:7px 16px;
+  color:var(--orange);
+  font-family:'DM Sans',sans-serif;
+  font-size:.78rem;font-weight:700;
+  cursor:pointer;transition:.3s;
+  letter-spacing:1px;text-transform:uppercase;
+  backdrop-filter:blur(8px);
+  display:none; /* chỉ hiện khi đã login (JS bật) */
+}
+.logout-fixed:hover{background:rgba(255,107,53,.28);transform:scale(1.05);}
+
 .welcome-inner{
   width:100%;max-width:800px;
   text-align:center;
@@ -335,6 +354,8 @@ body{
 .history-item.loss .h-result{color:var(--accent);}
 .h-prize{font-size:1rem;color:var(--yellow);font-weight:700;}
 .h-meta{font-size:.78rem;color:rgba(255,255,255,.45);text-align:right;display:flex;flex-direction:column;gap:2px;}
+
+
 
 /* ═══════════════════════════════════
    GAME SCREEN
@@ -1264,6 +1285,9 @@ body{
 <!-- ═══ WELCOME SCREEN ═══ -->
 <div id="welcome-screen" class="screen active">
 
+  <!-- Nút đăng xuất cố định góc trên phải -->
+  <button class="logout-fixed" id="logout-fixed-btn" onclick="doLogout()">🚪 Đăng xuất</button>
+
   <!-- Floating decos -->
   <span class="deco deco-star" style="top:80px;left:5%;color:#FF3AF2;" aria-hidden="true">✦</span>
   <span class="deco deco-star" style="top:160px;right:8%;color:#FFE600;" aria-hidden="true">★</span>
@@ -1685,6 +1709,9 @@ fetch('/api/auth/me')
       playerName=d.display_name;
     }
     if(displayName)displayName.textContent=d.display_name;
+    // Hiện nút đăng xuất khi đã xác nhận login
+    const logoutBtn=document.getElementById('logout-fixed-btn');
+    if(logoutBtn)logoutBtn.style.display='block';
     loadHistory();
     loadWallet();
   });
