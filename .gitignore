@@ -1,24 +1,59 @@
-.env
+# ==========================================
+# GITIGNORE - AI LA TRIEU PHU
+# ==========================================
 
-# Python & Virtual Environments
+# === BÍ MẬT / BIẾN MÔI TRƯỜNG ===
+.env
+.env.*
+*.env
+!.env.example
+
+# === PYTHON ===
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.pyc
 *.egg-info/
 dist/
 build/
-venv/
+*.egg
+.eggs/
+*.whl
+
+# === MÔI TRƯỜNG ẢO ===
 .venv/
+venv/
+env/
+ENV/
+.virtualenv/
 
-# OS specific files
+# === HỆ ĐIỀU HÀNH ===
 .DS_Store
+.DS_Store?
+._*
 Thumbs.db
+ehthumbs.db
+desktop.ini
 
-# IDE settings
+# === IDE / EDITOR ===
 .vscode/
 .idea/
+*.swp
+*.swo
+*~
 
-# Binaries, Logs & Compressed files (ngrok, zip, log)
+# === LOG & TEMP ===
+*.log
+*.tmp
+*.bak
+npm-debug.log*
+
+# === BINARY & TOOLS ===
 ngrok
 ngrok 2
 *.zip
-*.log
+*.tar.gz
+
+# === SCRATCH / TEST LOCAL ===
+scratch/
