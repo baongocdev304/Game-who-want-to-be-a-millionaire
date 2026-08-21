@@ -1,4 +1,4 @@
-from shared import app, get_db, get_or_create_wallet, sessions, PRIZE_LEVELS, MILESTONES, gemini_client, GEMINI_MODEL, session, request, jsonify, psycopg2, uuid, time, json, random
+from shared import app, get_db, get_or_create_wallet, sessions, PRIZE_LEVELS, MILESTONES, gemini_client, GEMINI_MODEL, session, request, jsonify, psycopg2, uuid, time, json, random, generate_questions_with_ai, get_local_fallback_questions
 
 @app.route('/api/game/start', methods=['POST'])
 def start_game():
