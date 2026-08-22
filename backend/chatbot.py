@@ -1,6 +1,17 @@
 from shared import app, sessions, gemini_client, GEMINI_MODEL, request, jsonify
-
+import os
+from google import genai
+from dotenv import load_dotenv
+load_dotenv()
+try:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    client = genai.Client(api_key=api_key)
+    gemini_client = client
+except Exception as e:
+    print(f"Lỗi khi khởi tạo Gemini client: {e}")
+    gemini_client = None
 @app.route('/api/chatbot', methods=['POST'])
+
 def chatbot():
     """
     Xử lý tin nhắn chatbot bằng Gemini AI.

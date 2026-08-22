@@ -1,4 +1,4 @@
-from shared import app, get_db, send_email_code, session, request, jsonify, psycopg2, random, datetime, timedelta
+from shared import app, get_db, hash_password, send_email_code, session, request, jsonify, psycopg2, random, datetime, timedelta
 
 @app.route('/api/auth/forgot-password', methods=['POST'])
 def forgot_password():
