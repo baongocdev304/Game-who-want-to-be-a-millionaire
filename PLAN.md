@@ -1,167 +1,191 @@
 # 📅 Kế Hoạch Học Code Backend & Toàn Bộ Hệ Thống — Dự Án "Ai Là Triệu Phú"
 
 > **Thời gian:** 25/08/2026 → 30/09/2026 (6 tuần, 38 buổi)  
-> **Mục tiêu:** Hiểu sâu bản chất từng dòng code, nắm vững tư duy kiến trúc và tự code lại toàn bộ dự án từ đầu  
-> **Công nghệ:** Python 3.10+ (Flask), PostgreSQL (psycopg2 Connection Pool), Google Gemini AI, SePay VietQR, Docker, Vanilla JS & CSS  
+> **Mục tiêu:** Hiểu sâu bản chất từng dòng code, nắm vững tư duy kiến trúc 4 tầng kết hợp 6 Domain Blueprints độc lập (theo [BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md)) và tự code lại toàn bộ dự án từ đầu  
+> **Công nghệ:** Python 3.11+ (Flask Blueprints & Application Factory), PostgreSQL (`ThreadedConnectionPool`), Google Gemini AI (`google-genai`), SePay VietQR Webhook, Docker, Vanilla JS & CSS
 
 ---
 
-## 🏗️ Kiến trúc hệ thống 4 tầng (4-Tier Architecture)
+## 🏗️ Kiến trúc hệ thống 4 tầng (4-Tier Modular Architecture)
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│  TẦNG 1: CẤU HÌNH & DATABASE (Infrastructure & Persistence)     │
-│  • .env (Biến môi trường)                                       │
-│  • database.py (Connection Pool, Khởi tạo Schema, Triggers)     │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────┐
-│  TẦNG 2: MODULE TRUNG TÂM & TIỆN ÍCH DÙNG CHUNG (Core & Shared) │
-│  • backend/shared.py                                            │
-│    - Khởi tạo Flask App, CORS, Secret Key                       │
-│    - Quản lý Database Context (`g.db`, `teardown_appcontext`)   │
-│    - Mã hóa bcrypt & Decorator `@login_required`                │
-│    - Cấu hình Email SMTP & Gemini AI Client                     │
-│    - Ngân hàng câu hỏi Offline & Tiền thưởng / Mốc an toàn     │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────┐
-│  TẦNG 3: CÁC FILE CHỨC NĂNG THEO DOMAIN (Route Controllers)     │
-│  • Xác thực: register.py, login.py, logout.py, forgotpass.py    │
-│  • Ván chơi: game_session.py, QA.py, supports.py, stopped.py,   │
-│              endtime.py                                         │
-│  • AI & Dịch thuật: chatbot.py, translate.py                    │
-│  • Dữ liệu & Xếp hạng: history.py, rank.py                      │
-│  • Thanh toán & Cửa hàng: shop.py, bank.py                      │
-│  • Hệ thống & Debug: debug.py                                   │
-└───────────────────────────────┬─────────────────────────────────┘
-                                │
-┌───────────────────────────────▼─────────────────────────────────┐
-│  TẦNG 4: ENTRY POINT & KHỞI CHẠY (Application Bootstrap)        │
-│  • backend/app.py (Import toàn bộ routes, PWA router, Dev run)  │
-│  • app.py (Root WSGI entry point phục vụ Gunicorn / Render)     │
-└─────────────────────────────────────────────────────────────────┘
+Toàn bộ Backend được phân tách theo **luồng phụ thuộc một chiều** (`Tầng 4 → Tầng 3 → Tầng 2 → Tầng 1`), tuyệt đối **không có Circular Import** và **không có import chéo giữa các Domain trong Tầng 3**:
+
+```text
+┌───────────────────────────────────────────────────────────────────────────┐
+│  TẦNG 4: APPLICATION BOOTSTRAP & ENTRY POINT                              │
+│  • app.py                — Root WSGI Entry Point (Gunicorn / Docker)      │
+│  • backend/app.py        — Application Factory create_app(), đăng ký      │
+│                            6 Blueprints & PWA routes (/manifest.json,     │
+│                            /sw.js)                                        │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼──────────────────────────────────────┐
+│  TẦNG 3: DOMAIN CONTROLLERS — 6 NHÓM BLUEPRINTS ĐỘC LẬP (backend/domains/)│
+│  • backend/domains/__init__.py (register_blueprints)                      │
+│  1. Auth         (auth_bp)    : register.py, login.py, logout.py,         │
+│                                 forgotpass.py                             │
+│  2. Gameplay     (game_bp)    : game_session.py, qa.py, supports.py,      │
+│                                 stopped.py, endtime.py                    │
+│  3. AI           (ai_bp)      : chatbot.py, translate.py                  │
+│  4. Data/Ranking (ranking_bp) : history.py, rank.py                       │
+│  5. Shop/Payment (shop_bp)    : shop.py, bank.py                          │
+│  6. Debug        (debug_bp)   : debug.py                                  │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼──────────────────────────────────────┐
+│  TẦNG 2: CORE & SHARED SERVICES (Tách nhỏ từ shared.py cũ)                │
+│  • 2A. Core (backend/core/):                                              │
+│    - extensions.py : Vòng đời DB per-request (g.db, close_db),            │
+│                      standalone_db_connection(), CORS                     │
+│    - security.py   : Mã hóa bcrypt, @login_required,                      │
+│                      @debug_access_required                               │
+│    - constants.py  : PRIZE_LEVELS, MILESTONES, SHOP_PRICES, Regex SePay,  │
+│                      format_prize(), get_safe_prize()                     │
+│  • 2B. Services (backend/services/):                                      │
+│    - gemini_service.py : Lazy Singleton Gemini Client (sinh câu hỏi,      │
+│                          MC chatbot, dịch thuật)                          │
+│    - question_bank.py  : Ngân hàng 45 câu hỏi offline & hàm fallback      │
+│    - mail_service.py   : Gửi mã OTP khôi phục mật khẩu qua SMTP           │
+│    - wallet_service.py : Quản lý ví lượt chơi & trợ giúp (atomic)         │
+│    - game_service.py   : GameSessionStore & record_game_result()          │
+└────────────────────────────────────┬──────────────────────────────────────┘
+                                     │
+┌────────────────────────────────────▼──────────────────────────────────────┐
+│  TẦNG 1: INFRASTRUCTURE, CONFIG & PERSISTENCE                             │
+│  • .env & backend/config.py : Tập trung & chuẩn hóa biến môi trường       │
+│  • database.py              : ThreadedConnectionPool, release_connection, │
+│                               Schema 8 bảng, Indexes & Trigger win_rate   │
+└───────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 📖 Chi Tiết Lộ Trình 6 Tuần (38 Buổi)
 
-### 🔹 Tuần 1 (25/08 → 31/08): Nền tảng, Database & Xác thực Cơ bản
+### 🔹 Tuần 1 (25/08 → 31/08): Tầng 1 (Config & DB Pool), Tầng 2A (Core) & Domain Auth Cơ bản
 
-> **Mục tiêu:** Dựng xong 4 tầng kiến trúc cơ bản, hoàn thành luồng Đăng ký + Đăng nhập với cơ chế bảo mật mật khẩu bcrypt.
-
-| Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
-|:---:|:---|:---|:---|
-| **1** | **Setup môi trường & Database Pool:**<br>• Cấu hình [.env](.env) (Database URL, Secret Keys).<br>• Viết [database.py](database.py): Sử dụng `psycopg2.pool.SimpleConnectionPool`, viết hàm `get_connection()`, `release_connection()`.<br>• Viết hàm `create_schema()` khởi tạo các bảng: `users`, `user_passwords`, `rankings`, `user_wallets`. | [.env](.env)<br>[database.py](database.py) | Chạy `python database.py` → In ra `✅ Tạo schema thành công!` và kiểm tra bảng trong PostgreSQL |
-| **2** | **Core Flask & Quản lý kết nối Database:**<br>• Khởi tạo Flask app, cấu hình CORS, Secret Key.<br>• Viết cơ chế quản lý vòng đời DB per-request: `get_db()` và `close_db(e)` gắn vào `g` object và `teardown_appcontext`.<br>• Hiểu rõ lý do dùng pattern này (tránh leak connection và không phải mở/đóng thủ công ở từng route). | [backend/shared.py](backend/shared.py) | Khởi chạy Flask app thử nghiệm, gọi `get_db()` trả về connection sạch sẽ |
-| **3** | **Bảo mật mật khẩu & Decorator Auth:**<br>• Viết `hash_password()` và `check_password()` dùng thư viện `bcrypt`.<br>• Viết Custom Decorator `@login_required` để bảo vệ các private endpoint.<br>• Đào sâu kỹ thuật xử lý ngoại lệ `try/except` và cách cấu trúc `if/else` gọn gàng. | [backend/shared.py](backend/shared.py) | Chạy test mã hóa chuỗi password thành công, `@login_required` chặn request khi chưa đăng nhập |
-| **4** | **API Đăng ký tài khoản:**<br>• Viết [backend/register.py](backend/register.py) với route `POST /api/auth/register`.<br>• Kiểm tra hợp lệ dữ liệu (username, email, password).<br>• Xử lý ngoại lệ bắt lỗi trùng lặp `IntegrityError` từ DB.<br>• Tự động khởi tạo bản ghi trong `user_wallets` và `rankings`. | [backend/register.py](backend/register.py) | Gửi request qua Postman/Curl → Trả về `{ "success": true }` và dữ liệu được lưu vào DB |
-| **5** | **API Đăng nhập & Quản lý Session:**<br>• Viết [backend/login.py](backend/login.py) với các route: `POST /api/auth/login`, `GET /api/auth/me`, `GET /`, `GET /auth`.<br>• Lưu `user_id` và `username` vào Flask `session`.<br>• Route `/api/auth/me` trả về thông tin trạng thái đăng nhập hiện tại. | [backend/login.py](backend/login.py) | Đăng nhập thành công, session được lưu cookie, gọi `/api/auth/me` trả về `logged_in: true` |
-| **6** | **Entry Point & Ghép nối Tầng 4:**<br>• Viết [backend/app.py](backend/app.py): Import các blueprint/routes từ `register`, `login`.<br>• Gọi `create_schema()` khi ứng dụng khởi động.<br>• Chạy server cục bộ và kiểm tra toàn bộ luồng Auth từ Đăng ký → Đăng nhập → Kiểm tra me. | [backend/app.py](backend/app.py)<br>[app.py](app.py) | Server chạy ổn định trên port 5000, luồng Auth hoạt động trơn tru |
-| **7** | **Ôn tập SQL & Đánh giá tuần 1:**<br>• Review các câu lệnh SQL đã dùng (`SELECT`, `INSERT`, `JOIN`, ràng buộc khóa ngoại `FOREIGN KEY`).<br>• Đặt breakpoint / debug các lỗi thường gặp.<br>• Hệ thống hóa kiến trúc 4 tầng trên sơ đồ. | Toàn bộ file Tuần 1 | Nắm vững cú pháp SQL cơ bản, phân biệt rõ vai trò của từng tầng |
-
----
-
-### 🔹 Tuần 2 (01/09 → 07/09): Hoàn thiện Auth & Khởi tạo Phiên Chơi
-
-> **Mục tiêu:** Hoàn thiện tính năng Đăng xuất, Quên mật khẩu qua Email OTP, hiểu cơ chế Ví lượt chơi và khởi tạo phiên chơi game.
+> **Mục tiêu:** Dựng nền tảng Tầng 1, Tầng 2A, Tầng 4 (Application Factory + Blueprints) và hoàn thành luồng Đăng ký + Đăng nhập chuẩn bảo mật bcrypt.
 
 | Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
 |:---:|:---|:---|:---|
-| **8** | **Đăng xuất (Logout):**<br>• Viết [backend/logout.py](backend/logout.py) với route `POST /api/auth/logout`.<br>• Xóa sạch session với `session.clear()`.<br>• Hiểu rõ vòng đời của Session Cookie trên trình duyệt. | [backend/logout.py](backend/logout.py) | Gọi logout → Session bị hủy, `/api/auth/me` trả về `logged_in: false` |
-| **9** | **Cấu hình Email SMTP & Gửi OTP:**<br>• Bổ sung cấu hình SMTP trong `shared.py` (`MAIL_SERVER`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`).<br>• Viết hàm `send_email_code(email, code)` sử dụng thư viện chuẩn `smtplib` và `email.mime.text.MIMEText`. | [backend/shared.py](backend/shared.py) | Test hàm gửi mail → Nhận được mã OTP 6 số qua email thật hoặc in ra console log |
-| **10** | **Quên mật khẩu - Bước 1 (Gửi mã OTP):**<br>• Viết route `POST /api/auth/forgot-password` trong [backend/forgotpass.py](backend/forgotpass.py).<br>• Sinh mã ngẫu nhiên 6 chữ số (`random.randint(100000, 999999)`).<br>• Lưu mã vào bảng `password_reset_codes` kèm thời hạn hết hạn 15 phút (`datetime.now() + timedelta(minutes=15)`). | [backend/forgotpass.py](backend/forgotpass.py) | Gọi API với email hợp lệ → Sinh bản ghi OTP trong DB và gửi email mã xác nhận |
-| **11** | **Quên mật khẩu - Bước 2 (Xác thực & Đổi mật khẩu):**<br>• Viết route `POST /api/auth/verify-reset-code`.<br>• Kiểm tra mã khớp + còn hạn (`expires_at > NOW()`).<br>• Hash mật khẩu mới bằng `bcrypt` và cập nhật bảng `user_passwords`.<br>• Đánh dấu mã đã dùng hoặc xóa mã. | [backend/forgotpass.py](backend/forgotpass.py) | Đổi mật khẩu thành công và dùng mật khẩu mới đăng nhập lại bình thường |
-| **12** | **Bộ hằng số Game & Quản lý Ví Lượt chơi:**<br>• Định nghĩa bảng tiền thưởng `PRIZE_LEVELS` (15 mốc: từ 200k đến 150 triệu VNĐ).<br>• Định nghĩa các mốc an toàn `MILESTONES = {5: 2000000, 10: 22000000, 15: 150000000}`.<br>• Viết hàm `get_or_create_wallet(user_id)` xử lý `INSERT ... ON CONFLICT DO NOTHING`. | [backend/shared.py](backend/shared.py) | Hiểu cấu trúc dữ liệu lưu trữ tiến trình game và ví của user |
-| **13** | **Khởi tạo ván chơi (`start_game`):**<br>• Viết route `POST /api/game/start` trong [backend/game_session.py](backend/game_session.py).<br>• Kiểm tra số lượt chơi trong ví → Trừ 1 lượt chơi.<br>• Tạo `session_id` ngẫu nhiên (UUID4).<br>• Chuẩn bị bộ 15 câu hỏi (tạm thời lấy từ bộ ngân hàng offline), lưu phiên vào biến bộ nhớ `sessions[session_id]`. | [backend/game_session.py](backend/game_session.py) | Gọi start game → Ví bị trừ 1 lượt, trả về `session_id` và dữ liệu câu hỏi số 1 |
-| **14** | **Ghi nhận kết quả ván đấu (`record_game_result`):**<br>• Viết hàm `record_game_result(user_id, score, prize_money, is_winner, stop_type)`.<br>• Ghi nhận ván đấu vào bảng `game_history`.<br>• Cập nhật thống kê trong bảng `rankings` (`total_score`, `highest_score`, `total_games`, `total_wins`, `total_losses`). | [backend/game_session.py](backend/game_session.py) | Kết thúc ván đấu → Bảng lịch sử và bảng xếp hạng tự động cập nhật đúng |
+| **1** | **Setup môi trường, Config & Database Pool (Tầng 1):**<br>• Cấu hình `.env` và viết [backend/config.py](backend/config.py): lớp `Config`, hàm `clean_env()` xử lý inline comment.<br>• Viết [database.py](database.py): dùng `psycopg2.pool.ThreadedConnectionPool`, viết `init_pool()`, `get_connection()`, `release_connection()` (tự rollback nếu transaction lỗi) và `create_schema()` khởi tạo 8 bảng + Indexes + Trigger `trg_win_rate`. | `.env`<br>[backend/config.py](backend/config.py)<br>[database.py](database.py) | Chạy `python database.py` → Khởi tạo Pool & Schema 8 bảng thành công trong PostgreSQL |
+| **2** | **Core Extensions & Vòng đời Kết nối DB (Tầng 2A):**<br>• Viết [backend/core/extensions.py](backend/core/extensions.py): quản lý kết nối per-request `get_db()` trên `flask.g` và `close_db()` gắn vào `teardown_appcontext`.<br>• Viết context manager `standalone_db_connection()` cấp kết nối tách biệt cho ghi log độc lập (tránh đóng nhầm `g.db`).<br>• Viết `init_extensions(app)` cấu hình CORS và `init_db_schema(app)`. | [backend/core/extensions.py](backend/core/extensions.py) | Kết nối DB tự động cấp và trả về Pool sạch sẽ sau mỗi request, không leak connection |
+| **3** | **Core Security: Bcrypt & Custom Decorators (Tầng 2A):**<br>• Viết [backend/core/security.py](backend/core/security.py): `hash_password()`, `check_password()` dùng `bcrypt`.<br>• Viết `@login_required` (kiểm tra session + xác minh `user_id` còn tồn tại trong DB; trả `401 JSON` cho `/api/*`, redirect `/auth` cho trang HTML).<br>• Viết `@debug_access_required` bảo vệ route chẩn đoán theo môi trường & `X-Admin-Debug-Key`. | [backend/core/security.py](backend/core/security.py) | Mã hóa & kiểm tra mật khẩu chuẩn xác; `@login_required` chặn truy cập chưa đăng nhập |
+| **4** | **Domain 1 (Auth) — Blueprint & Đăng ký tài khoản:**<br>• Tạo `auth_bp = Blueprint("auth", __name__)` trong [backend/domains/auth/\_\_init\_\_.py](backend/domains/auth/__init__.py).<br>• Viết [backend/domains/auth/register.py](backend/domains/auth/register.py) (`POST /api/auth/register`): validate `username >= 3`, `password >= 6`, chống trùng lặp, khởi tạo đồng bộ `users`, `user_passwords`, `rankings`, `user_wallets` (3 lượt miễn phí) trong 1 transaction. | [backend/domains/auth/\_\_init\_\_.py](backend/domains/auth/__init__.py)<br>[backend/domains/auth/register.py](backend/domains/auth/register.py) | Gửi request đăng ký → Trả `{ "success": true }`, tạo đủ 4 bảng & tự đăng nhập vào session |
+| **5** | **Domain 1 (Auth) — Đăng nhập, Session & Giao diện:**<br>• Viết [backend/domains/auth/login.py](backend/domains/auth/login.py) với 4 route: `POST /api/auth/login` (`JOIN users & user_passwords`), `GET /api/auth/me`, `GET /` (`@login_required`), `GET /auth`.<br>• Quản lý cookie phiên an toàn với `session['user_id']`, `session['username']`, `session['display_name']`. | [backend/domains/auth/login.py](backend/domains/auth/login.py) | Đăng nhập thành công, `/api/auth/me` trả `logged_in: true`, vào được trang chủ `/` |
+| **6** | **Tầng 4 — Application Factory (`create_app`) & WSGI Bridge:**<br>• Viết [backend/domains/\_\_init\_\_.py](backend/domains/__init__.py) (`register_blueprints(app)`).<br>• Viết [backend/app.py](backend/app.py) theo mẫu **Application Factory** `create_app()` nạp `Config`, gắn extensions, đăng ký Blueprints, khởi tạo schema & tuyến PWA.<br>• Viết cầu nối WSGI siêu gọn tại [app.py](app.py). | [backend/domains/\_\_init\_\_.py](backend/domains/__init__.py)<br>[backend/app.py](backend/app.py)<br>[app.py](app.py) | Chạy mượt cả 2 cách: `python app.py` (root) và `cd backend && python app.py` trên port 5002 |
+| **7** | **Ôn tập Kiến trúc 4 Tầng, SQL & Đánh giá Tuần 1:**<br>• Review `SELECT`, `INSERT`, `JOIN`, `ON CONFLICT`, ràng buộc khóa ngoại `ON DELETE CASCADE`.<br>• So sánh tư duy **Application Factory + Blueprints** so với cấu trúc phẳng `shared.py` cũ (triệt tiêu Circular Import). | Toàn bộ file Tuần 1 | Nắm vững ranh giới giữa Tầng 1, Tầng 2A, Tầng 3 và Tầng 4; luồng Auth chạy ổn định |
 
 ---
 
-### 🔹 Tuần 3 (08/09 → 14/09): Logic Game Chính (QA, Trợ giúp, Dừng chơi, Hết giờ)
+### 🔹 Tuần 2 (01/09 → 07/09): Hoàn thiện Auth, Tầng 2B (Mail, Wallet, Game Service) & Mở Phiên Chơi
 
-> **Mục tiêu:** Xây dựng trọn vẹn toàn bộ quy tắc trò chơi — Trả lời trắc nghiệm, 3 quyền trợ giúp, chủ động dừng cuộc chơi, xử lý hết thời gian (timeout).
+> **Mục tiêu:** Hoàn thiện Đăng xuất, Quên mật khẩu qua OTP Email, xây dựng tầng Services dùng chung (`mail`, `wallet`, `game`) và tạo phiên chơi game đầu tiên.
 
 | Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
 |:---:|:---|:---|:---|
-| **15** | **Xử lý Trả lời Đúng:**<br>• Viết [backend/QA.py](backend/QA.py) với route `POST /api/game/answer`.<br>• Kiểm tra `answer_index` người chơi gửi lên so với đáp án đúng trong `sessions[session_id]`.<br>• Trường hợp **ĐÚNG**: Tăng `current_question`, cập nhật tiền thưởng tạm tính, trả về nội dung câu hỏi tiếp theo. | [backend/QA.py](backend/QA.py) | Chọn đúng đáp án → Nhận tiếp câu hỏi số 2 kèm thông báo chính xác |
-| **16** | **Xử lý Trả lời Sai & Chiến thắng Câu 15:**<br>• Trường hợp **SAI**: Tính toán mốc thưởng an toàn đạt được (0đ, 2 triệu, hoặc 22 triệu), gọi `record_game_result()`, xóa session.<br>• Trường hợp **THẮNG CÂU 15**: Trả về trạng thái triệu phú (`is_winner: true`), ghi nhận giải thưởng tối đa 150 triệu. | [backend/QA.py](backend/QA.py) | Trả lời sai rớt về đúng mốc an toàn; trả lời đúng câu 15 nhận cúp chiến thắng |
-| **17** | **Quyền trợ giúp 50:50:**<br>• Viết [backend/supports.py](backend/supports.py) với route `POST /api/game/lifeline`.<br>• Xử lý loại `50:50`: Giữ lại đáp án đúng và chọn ngẫu nhiên 1 trong 3 đáp án sai bằng `random.choice()`, loại bỏ 2 đáp án sai còn lại.<br>• Đánh dấu quyền trợ giúp `fifty_fifty = true` để không dùng lại được. | [backend/supports.py](backend/supports.py) | Gọi 50:50 → Trả về danh sách 2 đáp án bị ẩn, không thể gọi lại lần 2 |
-| **18** | **Quyền trợ giúp Gọi điện thoại & Hỏi ý kiến khán giả:**<br>• Xử lý loại `phone`: Giả lập chuyên gia / AI đưa ra nhận định gợi ý đáp án.<br>• Xử lý loại `audience`: Sinh tỷ lệ phần trăm phân bổ cho 4 đáp án A, B, C, D (đáp án đúng có trọng số cao hơn). | [backend/supports.py](backend/supports.py) | Gọi điện → Nhận lời tư vấn; Khán giả → Nhận biểu đồ % bình chọn hợp lý |
-| **19** | **Dừng cuộc chơi bảo toàn tiền thưởng:**<br>• Viết [backend/stopped.py](backend/stopped.py) với route `POST /api/game/stop`.<br>• Người chơi chủ động dừng cuộc chơi → Nhận trọn vẹn số tiền thưởng của câu hỏi đúng gần nhất.<br>• Gọi `record_game_result()`, giải phóng session. | [backend/stopped.py](backend/stopped.py) | Bấm dừng cuộc chơi → Nhận đúng số tiền đã kiếm được mà không bị tụt về mốc an toàn |
-| **20** | **Xử lý Hết thời gian suy nghĩ (Timeout):**<br>• Viết [backend/endtime.py](backend/endtime.py) với route `POST /api/game/timeout`.<br>• Khi hết 30 giây mà chưa đưa ra câu trả lời → Tính thua cuộc theo mốc an toàn tương tự như trả lời sai. | [backend/endtime.py](backend/endtime.py) | Hết 30s → Server xử lý kết thúc game và trả về tiền thưởng an toàn |
-| **21** | **Tổng kiểm tra & Test liên hoàn Logic Game:**<br>• Thực hiện toàn bộ flow chơi 1 ván game mẫu qua Postman/Curl: `Start` → `Answer Đúng 5 câu` → `Dùng 50:50` → `Dùng Khán giả` → `Dừng cuộc chơi`.<br>• Kiểm tra tính toàn vẹn dữ liệu trong cơ sở dữ liệu. | Toàn bộ file Tuần 3 | Ván chơi chạy mượt mà từ đầu đến cuối không phát sinh ngoại lệ |
+| **8** | **Domain 1 (Auth) — Đăng xuất (`logout.py`):**<br>• Viết [backend/domains/auth/logout.py](backend/domains/auth/logout.py) (`POST /api/auth/logout`).<br>• Xóa sạch khóa phiên người dùng (`user_id`, `username`, `display_name`) và hiểu vòng đời Session Cookie. | [backend/domains/auth/logout.py](backend/domains/auth/logout.py) | Gọi logout → Hủy phiên, `/api/auth/me` trả về `logged_in: false` |
+| **9** | **Tầng 2B — Service Gửi Email SMTP (`mail_service.py`):**<br>• Viết [backend/services/mail_service.py](backend/services/mail_service.py) đọc cấu hình SMTP từ `Config`.<br>• Viết `send_email_code(receiver_email, code)` dùng `smtplib.SMTP` + `starttls()`, tự động chuyển chế độ mô phỏng console log khi chạy dev chưa có mật khẩu ứng dụng. | [backend/services/mail_service.py](backend/services/mail_service.py)<br>[backend/config.py](backend/config.py) | Test gửi OTP thành công qua SMTP thật hoặc in rõ mã 6 số ra terminal |
+| **10** | **Domain 1 (Auth) — Quên mật khẩu Bước 1 (Gửi OTP):**<br>• Viết `POST /api/auth/forgot-password` trong [backend/domains/auth/forgotpass.py](backend/domains/auth/forgotpass.py).<br>• Kiểm tra email tồn tại, sinh mã 6 chữ số (`random.randint(100000, 999999)`), lưu bảng `password_reset_codes` với hạn 15 phút và gọi `mail_service.send_email_code()`. | [backend/domains/auth/forgotpass.py](backend/domains/auth/forgotpass.py) | Gửi email hợp lệ → Tạo bản ghi OTP trong DB và gửi mã xác nhận |
+| **11** | **Domain 1 (Auth) — Quên mật khẩu Bước 2 (Xác thực & Đổi MK):**<br>• Viết `POST /api/auth/verify-reset-code`: validate mật khẩu mới ≥ 6 ký tự, kiểm tra OTP mới nhất (`is_used = FALSE AND expires_at > NOW()`).<br>• Hash mật khẩu mới bằng `bcrypt`, cập nhật `user_passwords` (`password_hash`, `last_changed = NOW()`) và đánh dấu `is_used = TRUE`. | [backend/domains/auth/forgotpass.py](backend/domains/auth/forgotpass.py) | Đổi mật khẩu thành công, OTP cũ không dùng lại được, đăng nhập bằng mật khẩu mới OK |
+| **12** | **Tầng 2A & 2B — Constants & Wallet Service:**<br>• Viết [backend/core/constants.py](backend/core/constants.py): `PRIZE_LEVELS` (15 mốc), `MILESTONES` (`5`, `10`, `15`), `SHOP_PRICES`, Regex SePay (`AMT_REF_PATTERN`, `LEGACY_REF_PATTERN`), `format_prize()`, `get_safe_prize()`.<br>• Viết [backend/services/wallet_service.py](backend/services/wallet_service.py): `get_or_create_wallet()` (`ON CONFLICT DO NOTHING`), `deduct_game_turn()`, `deduct_bonus_lifeline()`, `credit_wallet()` (dùng `SAVEPOINT` bảo vệ transaction chính). | [backend/core/constants.py](backend/core/constants.py)<br>[backend/services/wallet_service.py](backend/services/wallet_service.py) | Tập trung toàn bộ hằng số game/shop và nghiệp vụ ví atomic ở Tầng 2 |
+| **13** | **Tầng 2B — Game Service (Session Store & Lưu Kết Quả):**<br>• Viết [backend/services/game_service.py](backend/services/game_service.py): lớp `GameSessionStore` (`create_session`, `get_session`, `delete_session`) tách riêng để sẵn sàng nâng cấp lên Redis.<br>• Viết `record_game_result()` ghi `game_history` & cập nhật `rankings` (kích hoạt trigger `trg_win_rate`).<br>• Hiểu lý do đặt ở Tầng 2: tránh để `qa.py`, `stopped.py`, `endtime.py` import chéo vào `game_session.py`. | [backend/services/game_service.py](backend/services/game_service.py) | Phiên chơi được quản lý tập trung; kết thúc ván tự động lưu lịch sử và cập nhật xếp hạng |
+| **14** | **Domain 2 (Gameplay) — Khởi tạo ván chơi (`game_session.py`):**<br>• Tạo `game_bp = Blueprint("gameplay", __name__)` trong [backend/domains/gameplay/\_\_init\_\_.py](backend/domains/gameplay/__init__.py).<br>• Viết [backend/domains/gameplay/game_session.py](backend/domains/gameplay/game_session.py) (`POST /api/game/start` với `@login_required`): gọi `deduct_game_turn()`, lấy 15 câu hỏi, lưu vào `session_store` và xóa trường `correct` trước khi trả về Frontend. | [backend/domains/gameplay/\_\_init\_\_.py](backend/domains/gameplay/__init__.py)<br>[backend/domains/gameplay/game_session.py](backend/domains/gameplay/game_session.py) | Bắt đầu ván → Ví trừ 1 lượt, trả `session_id` và câu hỏi 1 (không lộ đáp án) |
 
 ---
 
-### 🔹 Tuần 4 (15/09 → 21/09): Tích hợp AI (Google Gemini), Chatbot MC & Dịch thuật
+### 🔹 Tuần 3 (08/09 → 14/09): Hoàn thiện Domain 2 — Gameplay (QA, Trợ giúp, Dừng chơi, Hết giờ)
 
-> **Mục tiêu:** Tích hợp SDK Google Gemini để tự động sinh câu hỏi đa dạng theo chuẩn format, xây dựng Chatbot MC hỗ trợ và tính năng dịch câu hỏi đa ngôn ngữ.
+> **Mục tiêu:** Xây dựng trọn vẹn luật chơi "Ai Là Triệu Phú" với kiểm soát quyền sở hữu phiên chơi, chống shadow biến `flask.session` và xử lý đủ 4 kịch bản kết thúc ván.
 
 | Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
 |:---:|:---|:---|:---|
-| **22** | **Cài đặt & Kết nối Google Gemini API:**<br>• Cài đặt thư viện `google-genai` hoặc `google-generativeai`.<br>• Khởi tạo client kết nối với `GEMINI_API_KEY`.<br>• Viết script test gửi prompt đơn giản và đọc phản hồi từ AI. | [backend/shared.py](backend/shared.py) | Kết nối Gemini thành công, test prompt nhận phản hồi nhanh chóng |
-| **23** | **Prompt Engineering sinh 15 câu hỏi tự động:**<br>• Viết hàm `generate_questions_with_ai()` trong `shared.py`.<br>• Soạn thảo System Prompt chi tiết: Yêu cầu AI tạo đúng 15 câu (5 Dễ, 5 Trung bình, 5 Khó) với định dạng JSON chuẩn `[{"question", "options", "correct_index"}]`.<br>• Viết cơ chế làm sạch chuỗi Markdown json bọc ngoài trước khi `json.loads()`. | [backend/shared.py](backend/shared.py) | Gọi hàm `generate_questions_with_ai()` → Trả về mảng 15 câu hỏi JSON chuẩn xác |
-| **24** | **Ngân hàng câu hỏi Offline (Fallback Strategy):**<br>• Xây dựng bộ ngân hàng câu hỏi dự phòng: `LOCAL_EASY_QUESTIONS`, `LOCAL_MEDIUM_QUESTIONS`, `LOCAL_HARD_QUESTIONS`.<br>• Viết hàm `get_local_fallback_questions()`: Dùng `random.sample()` chọn ngẫu nhiên và xáo trộn vị trí đáp án để mỗi lần chơi là một trải nghiệm mới. | [backend/shared.py](backend/shared.py) | Hàm offline trả về 15 câu hỏi hoàn chỉnh kể cả khi ngắt kết nối mạng hoặc lỗi AI |
-| **25** | **Tích hợp nguồn AI vào luồng Khởi tạo Game:**<br>• Cập nhật `game_session.py`: Ưu tiên gọi Gemini AI trước, nếu timeout/lỗi thì tự động fallback về câu hỏi Offline không làm gián đoạn người dùng. | [backend/game_session.py](backend/game_session.py) | Ván chơi luôn được khởi tạo thành công 100% dù có lỗi mạng hay không |
-| **26** | **Chatbot MC Lại Văn Sâm / Phan Đăng AI:**<br>• Viết [backend/chatbot.py](backend/chatbot.py) với route `POST /api/chatbot`.<br>• Thiết lập Persona MC: Hóm hỉnh, khích lệ người chơi, tuyệt đối không tiết lộ trực tiếp đáp án đúng.<br>• Giới hạn độ dài câu trả lời dưới 3 câu ngắn gọn. | [backend/chatbot.py](backend/chatbot.py) | Gửi tin nhắn trò chuyện → Nhận phản hồi vui nhộn đúng phong thái MC |
-| **27** | **API Dịch thuật câu hỏi đa ngôn ngữ:**<br>• Viết [backend/translate.py](backend/translate.py) với route `POST /api/translate`.<br>• Sử dụng Gemini AI để dịch câu hỏi và 4 phương án sang ngôn ngữ yêu cầu (tiếng Anh, v.v.). | [backend/translate.py](backend/translate.py) | Gọi dịch câu hỏi → Trả về bản dịch chuẩn nghĩa |
-| **28** | **Đánh giá & Tối ưu hóa tính năng AI:**<br>• Đo lường thời gian phản hồi của Gemini API.<br>• Tinh chỉnh prompt để hạn chế tối đa ảo giác (hallucination).<br>• Test kiểm thử các trường hợp AI trả về format lạ. | Toàn bộ file Tuần 4 | Toàn bộ tính năng AI ổn định, độ trễ chấp nhận được, có fallback an toàn |
+| **15** | **Xử lý Trả lời Đúng (`qa.py`):**<br>• Viết [backend/domains/gameplay/qa.py](backend/domains/gameplay/qa.py) (`POST /api/game/answer` với `@login_required`).<br>• Đặt tên biến `game_sess` (tránh ghi đè `flask.session`), kiểm tra tồn tại (`404`), quyền sở hữu `user_id` (`403`) và trạng thái `is_active` (`400`).<br>• Trường hợp **ĐÚNG**: tăng `current_question`, cập nhật thưởng, trả câu tiếp theo (đã ẩn `correct`). | [backend/domains/gameplay/qa.py](backend/domains/gameplay/qa.py) | Chọn đúng đáp án → Chuyển sang câu kế tiếp kèm tiền thưởng hiện tại |
+| **16** | **Xử lý Trả lời Sai, Mốc An Toàn & Chiến Thắng Câu 15 (`qa.py`):**<br>• Nhánh **SAI**: đóng phiên, tính mốc an toàn `get_safe_prize(current)` (0đ / 2tr / 22tr), gọi `record_game_result(..., 'loss', ...)`.<br>• Nhánh **THẮNG CÂU 15**: đóng phiên, ghi `'win'` với giải tối đa `150.000.000 đ`. | [backend/domains/gameplay/qa.py](backend/domains/gameplay/qa.py) | Sai tụt đúng mốc an toàn; đúng câu 15 nhận cúp triệu phú; không trả lời lại phiên đã đóng |
+| **17** | **Quyền trợ giúp 50:50 & Bonus Lifelines (`supports.py`):**<br>• Viết [backend/domains/gameplay/supports.py](backend/domains/gameplay/supports.py) (`POST /api/game/lifeline` với `@login_required`).<br>• Validate `type` hợp lệ (`5050`, `phone`, `audience`) trước khi chạm vào ví.<br>• Xử lý `5050` loại 2 đáp án sai; nếu đã dùng quyền mặc định trong ván → tự gọi `wallet_service.deduct_bonus_lifeline()`. | [backend/domains/gameplay/supports.py](backend/domains/gameplay/supports.py) | Dùng `5050` loại đúng 2 đáp án sai; dùng lần 2 trừ `bonus_lifelines` trong ví |
+| **18** | **Quyền trợ giúp Gọi điện thoại & Khán giả (`supports.py`):**<br>• Hoàn thiện `phone`: giả lập người thân gợi ý (70% đúng với độ tự tin 70–95%, 30% sai với 30–60%).<br>• Hoàn thiện `audience`: sinh phân bố 4 đáp án tổng đúng 100%, đáp án đúng có trọng số cao (35–70%). | [backend/domains/gameplay/supports.py](backend/domains/gameplay/supports.py) | Trả lời tư vấn Gọi điện & biểu đồ % Khán giả trường quay hợp lý |
+| **19** | **Dừng cuộc chơi bảo toàn tiền thưởng (`stopped.py`):**<br>• Viết [backend/domains/gameplay/stopped.py](backend/domains/gameplay/stopped.py) (`POST /api/game/stop` với `@login_required`).<br>• Kiểm tra sở hữu phiên & `is_active` (chống bấm dừng lặp), tính `PRIZE_LEVELS[current - 1]` và ghi kết quả kèm metadata `{"reason": "stopped"}`. | [backend/domains/gameplay/stopped.py](backend/domains/gameplay/stopped.py) | Dừng cuộc chơi → Nhận trọn số tiền câu đã trả lời đúng gần nhất |
+| **20** | **Xử lý Hết thời gian 30 giây (`endtime.py`):**<br>• Viết [backend/domains/gameplay/endtime.py](backend/domains/gameplay/endtime.py) (`POST /api/game/timeout` với `@login_required`).<br>• Đóng phiên, trả về `correct_answer` và tiền thưởng theo mốc an toàn `get_safe_prize()`, ghi kết quả kèm metadata `{"reason": "timeout"}`. | [backend/domains/gameplay/endtime.py](backend/domains/gameplay/endtime.py) | Hết 30s → Server kết thúc phiên và trả đúng đáp án + mốc thưởng an toàn |
+| **21** | **Kiểm thử liên hoàn Domain Gameplay & Cô lập phiên:**<br>• Test đủ 4 kịch bản: sai câu 6 (2tr), dừng câu 3 (600k), hết giờ câu 10 (22tr), thắng câu 15 (150tr).<br>• Test user thứ 2 gửi `session_id` của user 1 → server chặn `403 Forbidden`. | Toàn bộ file Tuần 3 | Toàn bộ Gameplay chạy trơn tru, dữ liệu `game_history` & `rankings` chính xác 100% |
 
 ---
 
-### 🔹 Tuần 5 (22/09 → 28/09): Cửa hàng, Webhook Ngân hàng (SePay), Lịch sử & Xếp hạng
+### 🔹 Tuần 4 (15/09 → 21/09): Tầng 2B (AI & Question Bank) & Domain 3 — AI (Chatbot & Dịch thuật)
 
-> **Mục tiêu:** Xây dựng tính năng Ví lượt chơi, Cửa hàng VietQR SePay tự động cộng lượt khi nhận tiền chuyển khoản, và các API thống kê bảng xếp hạng.
+> **Mục tiêu:** Tập trung toàn bộ logic gọi Google Gemini AI vào `services/gemini_service.py` theo chuẩn Lazy Singleton, tách ngân hàng 45 câu hỏi offline vào `services/question_bank.py`, và xây dựng Domain AI (`chatbot`, `translate`).
 
 | Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
 |:---:|:---|:---|:---|
-| **29** | **API Lịch sử đấu (Game History):**<br>• Viết [backend/history.py](backend/history.py) với route `GET /api/game/history`.<br>• Truy vấn bảng `game_history` theo `user_id`, sắp xếp `ORDER BY played_at DESC LIMIT 20`. | [backend/history.py](backend/history.py) | Trả về danh sách các ván đấu đã chơi gồm điểm, tiền thưởng, kết quả |
-| **30** | **API Bảng xếp hạng (Leaderboard):**<br>• Viết [backend/rank.py](backend/rank.py) với route `GET /api/leaderboard`.<br>• Thực hiện `JOIN` giữa bảng `rankings` và `users`, sắp xếp theo `total_score DESC` lấy Top 20 cao thủ. | [backend/rank.py](backend/rank.py) | Trả về bảng xếp hạng người chơi có tổng điểm cao nhất |
-| **31** | **API Ví người dùng & Cấu hình SePay:**<br>• Viết route `GET /api/shop/wallet` trong [backend/shop.py](backend/shop.py).<br>• Đọc cấu hình SePay từ `shared.py` (`SEPAY_BANK_CODE`, `SEPAY_ACCOUNT_NO`, `WEBHOOK_SECRET`). | [backend/shop.py](backend/shop.py)<br>[backend/shared.py](backend/shared.py) | Trả về số lượt chơi hiện có của user |
-| **32** | **Tạo đơn hàng mua lượt & Sinh VietQR:**<br>• Viết route `POST /api/shop/create-order`.<br>• Tạo mã thanh toán duy nhất `payment_ref` (ví dụ `NAP_USER123_XXXX`).<br>• Lưu đơn hàng `pending` vào bảng `shop_transactions`.<br>• Sinh đường dẫn ảnh mã QR VietQR chứa sẵn số tiền và nội dung chuyển khoản. | [backend/shop.py](backend/shop.py) | Nhận mã QR và thông tin chuyển khoản chính xác |
-| **33** | **Xác thực Webhook Ngân hàng (SePay Security):**<br>• Viết route `POST /api/shop/webhook` trong [backend/bank.py](backend/bank.py).<br>• Kiểm tra tính hợp lệ của chữ ký `X-SePay-Signature` hoặc `Authorization API Key`.<br>• Viết hàm `log_webhook_attempt()` ghi nhận nhật ký vào bảng `webhook_logs`. | [backend/bank.py](backend/bank.py) | Chặn các request giả mạo, chỉ chấp nhận request chuẩn từ hệ thống SePay |
-| **34** | **Xử lý cộng lượt chơi tự động:**<br>• Phân tích nội dung chuyển khoản tìm `payment_ref` bằng Regex.<br>• Tìm đơn hàng trạng thái `pending` khớp mã và số tiền.<br>• Cập nhật đơn hàng thành `paid`, cộng lượt chơi vào bảng `user_wallets` trong 1 Database Transaction. | [backend/bank.py](backend/bank.py) | Giả lập chuyển khoản thành công → Ví người dùng lập tức được cộng lượt chơi |
-| **35** | **API Debug & Kiểm thử toàn diện Thanh toán:**<br>• Viết [backend/debug.py](backend/debug.py) với route `/api/debug/status` và `/api/debug/webhooks`.<br>• Test trọn vẹn chu trình: Tạo đơn → Quét QR → Webhook nổ → Ví tăng lượt. | [backend/debug.py](backend/debug.py) | Hệ thống thanh toán tự động hóa 100% hoạt động mượt mà |
+| **22** | **Tầng 2B — Khởi tạo Gemini Service (Lazy Singleton):**<br>• Viết [backend/services/gemini_service.py](backend/services/gemini_service.py): dùng SDK `google-genai`, khởi tạo duy nhất 1 `gemini_client` khi thực sự cần (`get_gemini_client()`), **không gọi API test lúc import** để tránh tốn quota và làm chậm khởi động server. | [backend/services/gemini_service.py](backend/services/gemini_service.py)<br>[backend/config.py](backend/config.py) | 1 Gemini Client dùng chung toàn hệ thống, khởi động server tức thì |
+| **23** | **Prompt Engineering & Validate JSON sinh 15 câu hỏi:**<br>• Viết `generate_questions_with_ai()` trong [backend/services/gemini_service.py](backend/services/gemini_service.py).<br>• Soạn prompt yêu cầu 15 câu thuần Việt (5 `easy`, 5 `medium`, 5 `hard`), trích xuất mảng JSON `[...]` và viết `_is_valid_question_list()` kiểm tra chặt từng câu (có `question`, đúng 4 `answers`, `correct` ∈ `0..3`). | [backend/services/gemini_service.py](backend/services/gemini_service.py) | Gọi hàm sinh ra 15 câu hỏi JSON hợp lệ, tự loại bỏ phản hồi lỗi định dạng |
+| **24** | **Tầng 2B — Ngân hàng câu hỏi Offline Fallback:**<br>• Viết [backend/services/question_bank.py](backend/services/question_bank.py): nguồn duy nhất chứa 45 câu hỏi (`LOCAL_EASY_QUESTIONS`, `LOCAL_MEDIUM_QUESTIONS`, `LOCAL_HARD_QUESTIONS`) — không lặp lại ở bất kỳ controller nào.<br>• Viết `get_local_fallback_questions()`: bốc 5–5–5 câu và xáo trộn vị trí 4 đáp án + cập nhật lại chỉ số `correct`. | [backend/services/question_bank.py](backend/services/question_bank.py) | Luôn trả về 15 câu hỏi mới mẻ, đáp án xáo trộn kể cả khi mất mạng |
+| **25** | **Kết nối nguồn câu hỏi AI + Fallback vào Gameplay:**<br>• Tích hợp `generate_questions_with_ai()` và `get_local_fallback_questions()` trong [backend/domains/gameplay/game_session.py](backend/domains/gameplay/game_session.py).<br>• Đảm bảo ván chơi luôn khởi tạo thành công 100% dù Gemini API lỗi hoặc hết quota. | [backend/domains/gameplay/game_session.py](backend/domains/gameplay/game_session.py) | Ưu tiên câu hỏi AI, tự động chuyển sang offline mượt mà khi có sự cố |
+| **26** | **Domain 3 (AI) — Chatbot MC Trợ Lý (`chatbot.py`):**<br>• Tạo `ai_bp = Blueprint("ai", __name__)` trong [backend/domains/ai/\_\_init\_\_.py](backend/domains/ai/__init__.py).<br>• Viết `generate_mc_reply()` trong `gemini_service.py` (Persona MC hóm hỉnh, cấm lộ đáp án, < 3 câu) và route `POST /api/chatbot` trong [backend/domains/ai/chatbot.py](backend/domains/ai/chatbot.py) đọc ngữ cảnh từ `session_store`. | [backend/domains/ai/\_\_init\_\_.py](backend/domains/ai/__init__.py)<br>[backend/domains/ai/chatbot.py](backend/domains/ai/chatbot.py) | Trò chuyện với MC đúng ngữ cảnh câu đang chơi và không bị lộ đáp án |
+| **27** | **Domain 3 (AI) — Dịch thuật câu hỏi (`translate.py`):**<br>• Viết `translate_question_with_ai()` trong `gemini_service.py` (bóc bỏ markdown fence ```` ```json ````, kiểm tra đủ khóa `question` & `answers`).<br>• Viết route `POST /api/translate` trong [backend/domains/ai/translate.py](backend/domains/ai/translate.py). | [backend/domains/ai/translate.py](backend/domains/ai/translate.py) | Dịch câu hỏi hiện tại và 4 phương án sang Tiếng Anh / ngôn ngữ bất kỳ chuẩn JSON |
+| **28** | **Kiểm thử & Tối ưu Domain AI:**<br>• Dùng `unittest.mock.patch` kiểm thử nhanh `chatbot` & `translate` không tốn quota.<br>• Kiểm tra trường hợp thiếu `GEMINI_API_KEY`, `session_id` không tồn tại (`404`) và tối ưu prompt. | Toàn bộ file Tuần 4 | Toàn bộ tính năng AI ổn định, phản hồi nhanh, fallback an toàn |
 
 ---
 
-### 🔹 Tuần 6 (29/09 → 30/09): Frontend Engine, Docker hóa & Triển khai Production
+### 🔹 Tuần 5 (22/09 → 28/09): Domain 4 (Data/Ranking), Domain 5 (Shop/Payment) & Domain 6 (Debug)
 
-> **Mục tiêu:** Hiểu toàn bộ tầng Frontend JavaScript điều khiển UI/Âm thanh, đóng gói ứng dụng bằng Docker và cấu hình triển khai lên Render/Cloud.
+> **Mục tiêu:** Xây dựng thống kê Lịch sử & Bảng xếp hạng, hoàn thiện Cửa hàng VietQR + SePay Webhook tự động (có idempotency & log độc lập) và nhóm Debug có phân quyền môi trường.
 
 | Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
 |:---:|:---|:---|:---|
-| **36** | **Mổ xẻ Frontend Game Engine:**<br>• Đọc hiểu [static/js/game.js](static/js/game.js): Cách quản lý state, vòng lặp đếm ngược 30 giây, phát hiệu ứng âm thanh sống động.<br>• Phân tích cách JavaScript gọi Fetch API tương tác với Backend (`startGame`, `selectAnswer`, `useLifeline`, `stopGame`, `chatWithMC`). | [static/js/game.js](static/js/game.js) | Nắm vững cơ chế đồng bộ trạng thái giữa Frontend và Backend |
-| **37** | **Giao diện HTML Templates & PWA:**<br>• Phân tích cú pháp Jinja2 trong [templates/signin.html](templates/signin.html), [templates/index.html](templates/index.html), [templates/shop.html](templates/shop.html).<br>• Cấu hình Progressive Web App (PWA) với `manifest.json` và Service Worker `sw.js` để có thể cài đặt game lên điện thoại. | [templates/](templates/) | Hiểu cơ chế SSR kết hợp SPA, cài đặt được app PWA trên mobile/desktop |
-| **38** | **Docker, Deploy Render & Tổng kết:**<br>• Phân tích [Dockerfile](Dockerfile), [docker-compose.yml](docker-compose.yml), [Procfile](Procfile) và file cầu nối WSGI [app.py](app.py).<br>• Chạy toàn bộ hệ thống bằng `docker-compose up`.<br>• **Tổng kết khóa học:** Kiểm thử lần cuối tất cả 19 API endpoints, nghiệm thu toàn bộ kiến thức đạt được. | [Dockerfile](Dockerfile)<br>[docker-compose.yml](docker-compose.yml)<br>[Procfile](Procfile)<br>[app.py](app.py) | Triển khai thành công ứng dụng lên môi trường Production |
+| **29** | **Domain 4 (Data/Ranking) — Lịch sử đấu (`history.py`):**<br>• Tạo `ranking_bp = Blueprint("ranking", __name__)` trong [backend/domains/ranking/\_\_init\_\_.py](backend/domains/ranking/__init__.py).<br>• Viết [backend/domains/ranking/history.py](backend/domains/ranking/history.py) (`GET /api/game/history`, `@login_required`): truy vấn 20 ván gần nhất từ `game_history` theo `played_at DESC`. | [backend/domains/ranking/\_\_init\_\_.py](backend/domains/ranking/__init__.py)<br>[backend/domains/ranking/history.py](backend/domains/ranking/history.py) | Trả về danh sách 20 ván đấu gần nhất của đúng user đang đăng nhập |
+| **30** | **Domain 4 (Data/Ranking) — Bảng xếp hạng (`rank.py`):**<br>• Viết [backend/domains/ranking/rank.py](backend/domains/ranking/rank.py) (`GET /api/leaderboard`, Public): `JOIN rankings & users` sắp xếp theo `total_score DESC LIMIT 10`. | [backend/domains/ranking/rank.py](backend/domains/ranking/rank.py) | Trả về Top 10 cao thủ gồm tên hiển thị, tổng điểm và số trận thắng |
+| **31** | **Domain 5 (Shop/Payment) — Ví, Kiểm tra đơn & Lịch sử nạp:**<br>• Tạo `shop_bp = Blueprint("shop", __name__)` trong [backend/domains/shop/\_\_init\_\_.py](backend/domains/shop/__init__.py).<br>• Viết `GET /api/shop/wallet` (đưa về đúng domain `shop.py`), `GET /api/shop/check-status` (lọc kèm `user_id` chống tra cứu chéo đơn) và `GET /api/shop/history` trong [backend/domains/shop/shop.py](backend/domains/shop/shop.py). | [backend/domains/shop/\_\_init\_\_.py](backend/domains/shop/__init__.py)<br>[backend/domains/shop/shop.py](backend/domains/shop/shop.py) | Xem số dư ví, polling trạng thái đơn và lịch sử 20 giao dịch nạp gần nhất |
+| **32** | **Domain 5 (Shop/Payment) — Tạo đơn hàng & Sinh VietQR:**<br>• Viết `POST /api/shop/create-order` trong [backend/domains/shop/shop.py](backend/domains/shop/shop.py): validate `item_type` & `quantity` (chặn cả kiểu `bool` & số ≤ 0), sinh mã `AMT_<timestamp>_<6-hex>`, lưu đơn `pending` vào `shop_transactions` và trả về URL QR `img.vietqr.io`. | [backend/domains/shop/shop.py](backend/domains/shop/shop.py)<br>[backend/core/constants.py](backend/core/constants.py) | Nhận được ảnh QR VietQR kèm đúng số tiền và nội dung chuyển khoản |
+| **33** | **Domain 5 (Shop/Payment) — Xác thực SePay Webhook & Log Độc Lập:**<br>• Viết [backend/domains/shop/bank.py](backend/domains/shop/bank.py) với 2 route `POST /api/shop/webhook` và alias `POST /api/webhook/sepay`.<br>• Xây dựng xác thực 3 lớp header (`X-SePay-Signature` HMAC-SHA256, `Authorization: Apikey/Bearer`, `X-API-Key/X-Secret-Key`), xử lý `SEPAYTEST` & Simulator HMAC.<br>• Viết `_log_webhook_attempt()` dùng `standalone_db_connection()` ghi vào `webhook_logs` tách khỏi `g.db`. | [backend/domains/shop/bank.py](backend/domains/shop/bank.py)<br>[backend/core/extensions.py](backend/core/extensions.py) | Chặn request giả mạo (`401`/`403`), ghi log webhook an toàn không làm đứt transaction chính |
+| **34** | **Domain 5 (Shop/Payment) — Đối soát Regex, Idempotency & Cộng lượt:**<br>• Dùng `AMT_REF_PATTERN` & `LEGACY_REF_PATTERN` (từ `core/constants.py`) trích mã đơn dù ngân hàng bỏ dấu `_`.<br>• Kiểm tra **idempotency** (`status == 'paid'` thì bỏ qua, chống cộng đúp), kiểm tra `transferAmount >= total_price`, cập nhật đơn thành `paid` và gọi `wallet_service.credit_wallet()` trong 1 transaction. | [backend/domains/shop/bank.py](backend/domains/shop/bank.py)<br>[backend/services/wallet_service.py](backend/services/wallet_service.py) | Gửi webhook hợp lệ → Đơn chuyển `paid`, ví cộng đúng lượt; gửi lặp không bị cộng 2 lần |
+| **35** | **Domain 6 (Debug) — Chẩn đoán hệ thống & Khóa Production:**<br>• Tạo `debug_bp = Blueprint("debug", __name__)` trong [backend/domains/debug/\_\_init\_\_.py](backend/domains/debug/__init__.py).<br>• Viết [backend/domains/debug/debug.py](backend/domains/debug/debug.py): `GET /api/debug/status`, `GET /api/debug/webhooks`, `GET /api/debug/transaction/<ref>` gắn `@debug_access_required` (mở ở dev, yêu cầu `X-Admin-Debug-Key` trên production). | [backend/domains/debug/\_\_init\_\_.py](backend/domains/debug/__init__.py)<br>[backend/domains/debug/debug.py](backend/domains/debug/debug.py) | Theo dõi trực tiếp trạng thái DB, Regex, Webhook logs & khóa an toàn trên Production |
 
 ---
 
-## 📊 Bảng Tra Cứu 19 API Endpoints
+### 🔹 Tuần 6 (29/09 → 30/09): Frontend Engine, Docker hóa, Regression Test & Triển khai Production
 
-| # | Method | Endpoint | File Controller | Quyền / Auth | Chức năng chính |
-|:---:|:---:|:---|:---|:---:|:---|
-| 1 | `POST` | `/api/auth/register` | [register.py](backend/register.py) | Public | Đăng ký tài khoản mới, mã hóa bcrypt |
-| 2 | `POST` | `/api/auth/login` | [login.py](backend/login.py) | Public | Đăng nhập, thiết lập session cookie |
-| 3 | `GET` | `/api/auth/me` | [login.py](backend/login.py) | Public | Kiểm tra thông tin phiên đăng nhập |
-| 4 | `POST` | `/api/auth/logout` | [logout.py](backend/logout.py) | User | Đăng xuất, hủy session |
-| 5 | `POST` | `/api/auth/forgot-password` | [forgotpass.py](backend/forgotpass.py) | Public | Gửi mã OTP xác nhận qua Email |
-| 6 | `POST` | `/api/auth/verify-reset-code` | [forgotpass.py](backend/forgotpass.py) | Public | Xác thực OTP và đổi mật khẩu mới |
-| 7 | `POST` | `/api/game/start` | [game_session.py](backend/game_session.py) | `@login_required` | Bắt đầu ván chơi, trừ lượt ví |
-| 8 | `POST` | `/api/game/answer` | [QA.py](backend/QA.py) | `@login_required` | Chốt đáp án, tính thưởng / an toàn |
-| 9 | `POST` | `/api/game/lifeline` | [supports.py](backend/supports.py) | `@login_required` | Dùng quyền 50:50, Khán giả, Gọi điện |
-| 10 | `POST` | `/api/game/stop` | [stopped.py](backend/stopped.py) | `@login_required` | Dừng chơi bảo toàn số tiền thưởng |
-| 11 | `POST` | `/api/game/timeout` | [endtime.py](backend/endtime.py) | `@login_required` | Xử lý khi hết thời gian 30s |
-| 12 | `GET` | `/api/game/history` | [history.py](backend/history.py) | `@login_required` | Xem lịch sử 20 ván chơi gần nhất |
-| 13 | `GET` | `/api/leaderboard` | [rank.py](backend/rank.py) | Public | Bảng xếp hạng Top 20 người chơi |
-| 14 | `POST` | `/api/chatbot` | [chatbot.py](backend/chatbot.py) | Public | Trò chuyện với MC Trợ lý AI |
-| 15 | `POST` | `/api/translate` | [translate.py](backend/translate.py) | Public | Dịch thuật câu hỏi sang tiếng Anh |
-| 16 | `GET` | `/api/shop/wallet` | [shop.py](backend/shop.py) | `@login_required` | Kiểm tra số lượt chơi trong ví |
-| 17 | `POST` | `/api/shop/create-order` | [shop.py](backend/shop.py) | `@login_required` | Tạo đơn mua lượt và trả về VietQR |
-| 18 | `POST` | `/api/shop/webhook` | [bank.py](backend/bank.py) | SePay Secret | Webhook nhận thanh toán tự động |
-| 19 | `GET` | `/api/debug/status` | [debug.py](backend/debug.py) | Public | Kiểm tra kết nối DB, Gemini & SePay |
+> **Mục tiêu:** Nắm vững tầng Frontend kết nối với 6 nhóm Domain Blueprints, đóng gói Docker chuẩn port `5002`, chạy kiểm thử hồi quy toàn bộ 28 endpoints và triển khai Production.
+
+| Buổi | Nội dung chi tiết | File liên quan | Kết quả đạt được |
+|:---:|:---|:---|:---|
+| **36** | **Mổ xẻ Frontend Game Engine:**<br>• Đọc hiểu [static/js/game.js](static/js/game.js): quản lý state ván chơi, đồng hồ 30 giây, hiệu ứng âm thanh Web Audio API.<br>• Đối chiếu từng hàm `fetch()` (`startGame`, `selectAnswer`, `useLifeline`, `stopGame`, `timeUp`, `sendChat`, `translateQuestion`) với đúng hợp đồng JSON của 6 Domain Blueprints. | [static/js/game.js](static/js/game.js) | Nắm vững 100% luồng đồng bộ trạng thái giữa Frontend và Backend |
+| **37** | **Giao diện HTML Templates & PWA:**<br>• Phân tích [templates/signin.html](templates/signin.html), [templates/index.html](templates/index.html), [templates/shop.html](templates/shop.html) (bao gồm cơ chế polling `/api/shop/check-status` mỗi 4 giây).<br>• Tìm hiểu cấu hình Progressive Web App (`static/manifest.json`, `static/sw.js`) được phục vụ từ Tầng 4 [backend/app.py](backend/app.py). | [templates/](templates/)<br>[backend/app.py](backend/app.py) | Hiểu cơ chế render template kết hợp REST API và cài đặt app PWA |
+| **38** | **Docker, Gunicorn, Kiểm thử hồi quy 28 Endpoints & Deploy:**<br>• Phân tích [Dockerfile](Dockerfile) (multi-stage, `gunicorn --bind 0.0.0.0:5002 --workers 1 --threads 4`), [docker-compose.yml](docker-compose.yml) (PostgreSQL 16 + Web + Ngrok), [docker-entrypoint.sh](docker-entrypoint.sh).<br>• Chạy kiểm thử hồi quy tự động toàn bộ **28 endpoints** trên PostgreSQL thực, xác minh **0 cross-domain imports** và hoàn tất triển khai. | [Dockerfile](Dockerfile)<br>[docker-compose.yml](docker-compose.yml)<br>[docker-entrypoint.sh](docker-entrypoint.sh)<br>[app.py](app.py)<br>[BACKEND_ARCHITECTURE.md](BACKEND_ARCHITECTURE.md) | Hệ thống chạy ổn định bằng cả Python local lẫn Docker/Render, pass 100% test 28 endpoints |
+
+---
+
+## 📊 Bảng Tra Cứu Toàn Bộ 28 API Endpoints (Theo 6 Domain & Bootstrap)
+
+| # | Nhóm Domain | Method | Endpoint | File Controller | Quyền / Auth | Chức năng chính |
+|:---:|---|:---:|---|---|:---:|---|
+| 1 | **Auth** | `GET` | `/` | [domains/auth/login.py](backend/domains/auth/login.py) | `@login_required` | Trang chơi game chính (`index.html`) |
+| 2 | **Auth** | `GET` | `/auth` | [domains/auth/login.py](backend/domains/auth/login.py) | Public | Trang đăng nhập / đăng ký (`signin.html`) |
+| 3 | **Auth** | `POST` | `/api/auth/register` | [domains/auth/register.py](backend/domains/auth/register.py) | Public | Đăng ký tài khoản, bcrypt, tạo ví (3 lượt) & ranking |
+| 4 | **Auth** | `POST` | `/api/auth/login` | [domains/auth/login.py](backend/domains/auth/login.py) | Public | Đăng nhập & thiết lập session cookie |
+| 5 | **Auth** | `GET` | `/api/auth/me` | [domains/auth/login.py](backend/domains/auth/login.py) | Public | Kiểm tra thông tin phiên đăng nhập hiện tại |
+| 6 | **Auth** | `POST` | `/api/auth/logout` | [domains/auth/logout.py](backend/domains/auth/logout.py) | Session | Đăng xuất, xóa thông tin phiên |
+| 7 | **Auth** | `POST` | `/api/auth/forgot-password` | [domains/auth/forgotpass.py](backend/domains/auth/forgotpass.py) | Public | Sinh mã OTP 6 số (15 phút) & gửi Email |
+| 8 | **Auth** | `POST` | `/api/auth/verify-reset-code` | [domains/auth/forgotpass.py](backend/domains/auth/forgotpass.py) | Public | Xác thực OTP và đặt lại mật khẩu mới |
+| 9 | **Gameplay** | `POST` | `/api/game/start` | [domains/gameplay/game_session.py](backend/domains/gameplay/game_session.py) | `@login_required` | Trừ 1 lượt ví, sinh 15 câu hỏi (AI/Offline) |
+| 10 | **Gameplay** | `POST` | `/api/game/answer` | [domains/gameplay/qa.py](backend/domains/gameplay/qa.py) | `@login_required` | Chốt đáp án, tính thưởng / mốc an toàn |
+| 11 | **Gameplay** | `POST` | `/api/game/lifeline` | [domains/gameplay/supports.py](backend/domains/gameplay/supports.py) | `@login_required` | Dùng 50:50, Gọi điện, Khán giả (+ bonus ví) |
+| 12 | **Gameplay** | `POST` | `/api/game/stop` | [domains/gameplay/stopped.py](backend/domains/gameplay/stopped.py) | `@login_required` | Dừng cuộc chơi bảo toàn tiền thưởng |
+| 13 | **Gameplay** | `POST` | `/api/game/timeout` | [domains/gameplay/endtime.py](backend/domains/gameplay/endtime.py) | `@login_required` | Xử lý hết 30s suy nghĩ, về mốc an toàn |
+| 14 | **AI** | `POST` | `/api/chatbot` | [domains/ai/chatbot.py](backend/domains/ai/chatbot.py) | Public / Session | Trò chuyện với MC Trợ lý ảo Gemini |
+| 15 | **AI** | `POST` | `/api/translate` | [domains/ai/translate.py](backend/domains/ai/translate.py) | Public / Session | Dịch câu hỏi & 4 đáp án bằng Gemini AI |
+| 16 | **Data/Ranking** | `GET` | `/api/game/history` | [domains/ranking/history.py](backend/domains/ranking/history.py) | `@login_required` | Xem lịch sử 20 ván chơi gần nhất |
+| 17 | **Data/Ranking** | `GET` | `/api/leaderboard` | [domains/ranking/rank.py](backend/domains/ranking/rank.py) | Public | Bảng xếp hạng Top 10 cao thủ điểm cao |
+| 18 | **Shop/Payment** | `GET` | `/api/shop/wallet` | [domains/shop/shop.py](backend/domains/shop/shop.py) | `@login_required` | Xem số dư lượt chơi & trợ giúp dự phòng |
+| 19 | **Shop/Payment** | `POST` | `/api/shop/create-order` | [domains/shop/shop.py](backend/domains/shop/shop.py) | `@login_required` | Tạo đơn `pending` và sinh mã VietQR |
+| 20 | **Shop/Payment** | `GET` | `/api/shop/check-status` | [domains/shop/shop.py](backend/domains/shop/shop.py) | `@login_required` | Polling trạng thái đơn theo `payment_ref` |
+| 21 | **Shop/Payment** | `GET` | `/api/shop/history` | [domains/shop/shop.py](backend/domains/shop/shop.py) | `@login_required` | Lịch sử 20 giao dịch mua hàng gần nhất |
+| 22 | **Shop/Payment** | `POST` | `/api/shop/webhook` | [domains/shop/bank.py](backend/domains/shop/bank.py) | SePay Secret | Webhook nhận thanh toán tự động từ SePay |
+| 23 | **Shop/Payment** | `POST` | `/api/webhook/sepay` | [domains/shop/bank.py](backend/domains/shop/bank.py) | SePay Secret | Alias endpoint cho SePay Webhook |
+| 24 | **Debug** | `GET` | `/api/debug/status` | [domains/debug/debug.py](backend/domains/debug/debug.py) | `@debug_access_required` | Kiểm tra phiên bản, kết nối DB & Regex |
+| 25 | **Debug** | `GET` | `/api/debug/webhooks` | [domains/debug/debug.py](backend/domains/debug/debug.py) | `@debug_access_required` | Xem 20 bản ghi nhật ký `webhook_logs` |
+| 26 | **Debug** | `GET` | `/api/debug/transaction/<ref>` | [domains/debug/debug.py](backend/domains/debug/debug.py) | `@debug_access_required` | Tra cứu chi tiết đơn hàng, ví và user |
+| 27 | **Bootstrap (PWA)** | `GET` | `/manifest.json` | [backend/app.py](backend/app.py) | Public | File cấu hình Progressive Web App |
+| 28 | **Bootstrap (PWA)** | `GET` | `/sw.js` | [backend/app.py](backend/app.py) | Public | Service Worker cho PWA |
 
 ---
 
@@ -169,70 +193,69 @@
 
 ```mermaid
 gantt
-    title TIẾN ĐỘ HỌC CODE DỰ ÁN AI LÀ TRIỆU PHÚ (6 TUẦN)
+    title TIẾN ĐỘ HỌC CODE DỰ ÁN AI LÀ TRIỆU PHÚ — KIẾN TRÚC 4 TẦNG (6 TUẦN)
     dateFormat YYYY-MM-DD
     axisFormat %d/%m
 
-    section Tuần 1 - Nền tảng & Auth
-    Setup .env & database.py           :t1, 2026-08-25, 1d
-    shared.py (Flask + DB Lifecycle)   :t2, after t1, 1d
-    shared.py (Bcrypt + Decorator)     :t3, after t2, 1d
-    register.py (Đăng ký)              :t4, after t3, 1d
-    login.py (Đăng nhập & Me)          :t5, after t4, 1d
-    app.py Entry Point                 :t6, after t5, 1d
-    Ôn tập SQL & Review tầng 1-4       :t7, after t6, 1d
+    section Tuần 1 - Tầng 1, Core & Auth cơ bản
+    config.py & database.py (Pool)        :t1, 2026-08-25, 1d
+    core/extensions.py (g.db & CORS)      :t2, after t1, 1d
+    core/security.py (Bcrypt & Guard)     :t3, after t2, 1d
+    domains/auth/register.py              :t4, after t3, 1d
+    domains/auth/login.py                 :t5, after t4, 1d
+    backend/app.py (Factory & WSGI)       :t6, after t5, 1d
+    Ôn tập SQL & Kiến trúc 4 Tầng         :t7, after t6, 1d
 
-    section Tuần 2 - Auth & Start Game
-    logout.py (Đăng xuất)              :t8, 2026-09-01, 1d
-    shared.py (Email SMTP OTP)         :t9, after t8, 1d
-    forgotpass.py (Gửi mã OTP)         :t10, after t9, 1d
-    forgotpass.py (Đổi mật khẩu)       :t11, after t10, 1d
-    shared.py (Constants & Wallets)    :t12, after t11, 1d
-    game_session.py (Khởi tạo ván)     :t13, after t12, 1d
-    game_session.py (Ghi nhận kết quả) :t14, after t13, 1d
+    section Tuần 2 - Auth OTP & Services lõi
+    domains/auth/logout.py                :t8, 2026-09-01, 1d
+    services/mail_service.py (SMTP)       :t9, after t8, 1d
+    domains/auth/forgotpass.py (OTP)      :t10, after t9, 1d
+    domains/auth/forgotpass.py (Reset)    :t11, after t10, 1d
+    core/constants & wallet_service       :t12, after t11, 1d
+    services/game_service.py              :t13, after t12, 1d
+    domains/gameplay/game_session.py      :t14, after t13, 1d
 
-    section Tuần 3 - Logic Game Lõi
-    QA.py (Trả lời đúng)               :t15, 2026-09-08, 1d
-    QA.py (Trả lời sai & Mốc an toàn)  :t16, after t15, 1d
-    supports.py (Quyền 50:50)          :t17, after t16, 1d
-    supports.py (Gọi điện & Khán giả)  :t18, after t17, 1d
-    stopped.py (Dừng cuộc chơi)        :t19, after t18, 1d
-    endtime.py (Hết giờ)               :t20, after t19, 1d
-    Test toàn diện luồng Game          :t21, after t20, 1d
+    section Tuần 3 - Domain Gameplay
+    domains/gameplay/qa.py (Đúng)         :t15, 2026-09-08, 1d
+    domains/gameplay/qa.py (Sai & Thắng)  :t16, after t15, 1d
+    domains/gameplay/supports.py (50:50)  :t17, after t16, 1d
+    domains/gameplay/supports.py (Gọi/KG) :t18, after t17, 1d
+    domains/gameplay/stopped.py           :t19, after t18, 1d
+    domains/gameplay/endtime.py           :t20, after t19, 1d
+    Test liên hoàn Gameplay & Cô lập      :t21, after t20, 1d
 
-    section Tuần 4 - Tích Hợp AI Gemini
-    Setup Google Gemini API            :t22, 2026-09-15, 1d
-    AI Prompt sinh 15 câu hỏi          :t23, after t22, 1d
-    Ngân hàng câu hỏi Offline          :t24, after t23, 1d
-    Tích hợp nguồn AI vào game         :t25, after t24, 1d
-    chatbot.py (MC Trợ lý AI)          :t26, after t25, 1d
-    translate.py (Dịch thuật)          :t27, after t26, 1d
-    Test & Tối ưu hóa AI               :t28, after t27, 1d
+    section Tuần 4 - Services AI & Domain AI
+    services/gemini_service (Singleton)   :t22, 2026-09-15, 1d
+    Prompt & Validate JSON 15 câu hỏi     :t23, after t22, 1d
+    services/question_bank.py (Offline)   :t24, after t23, 1d
+    Nối AI + Fallback vào game_session    :t25, after t24, 1d
+    domains/ai/chatbot.py (MC ảo)         :t26, after t25, 1d
+    domains/ai/translate.py (Dịch thuật)  :t27, after t26, 1d
+    Test Mock & Tối ưu Domain AI          :t28, after t27, 1d
 
-    section Tuần 5 - Shop & Thanh Toán
-    history.py (Lịch sử đấu)           :t29, 2026-09-22, 1d
-    rank.py (Bảng xếp hạng)            :t30, after t29, 1d
-    shop.py (Ví & Cấu hình SePay)      :t31, after t30, 1d
-    shop.py (Tạo đơn VietQR)           :t32, after t31, 1d
-    bank.py (Xác thực Webhook)         :t33, after t32, 1d
-    bank.py (Cộng lượt tự động)        :t34, after t33, 1d
-    debug.py & Test thanh toán         :t35, after t34, 1d
+    section Tuần 5 - Ranking, Shop & Debug
+    domains/ranking/history.py            :t29, 2026-09-22, 1d
+    domains/ranking/rank.py               :t30, after t29, 1d
+    domains/shop/shop.py (Ví & Lịch sử)   :t31, after t30, 1d
+    domains/shop/shop.py (Tạo đơn QR)     :t32, after t31, 1d
+    domains/shop/bank.py (Auth & Log)     :t33, after t32, 1d
+    domains/shop/bank.py (Regex & Cộng)   :t34, after t33, 1d
+    domains/debug/debug.py & Test Pay     :t35, after t34, 1d
 
-    section Tuần 6 - Frontend & Deploy
-    game.js (Frontend Game Engine)     :t36, 2026-09-29, 1d
-    HTML Templates & PWA               :t37, after t36, 1d
-    Docker, Deploy Render & Tổng kết   :t38, after t37, 1d
+    section Tuần 6 - Frontend, Test & Deploy
+    static/js/game.js (Frontend Engine)   :t36, 2026-09-29, 1d
+    HTML Templates & PWA                  :t37, after t36, 1d
+    Docker, E2E Test 28 APIs & Deploy     :t38, after t37, 1d
 ```
 
 ---
 
 ## 📌 Checklist Kỹ Năng & Kiến Thức Thu Đạt
 
-- [ ] **Python Core:** Kỹ năng xử lý ngoại lệ `try/except`, Decorator nâng cao, Quản lý tài nguyên `with contextmanager`, Modular architecture.
-- [ ] **Flask Framework:** Cấu trúc Blueprint, Context `g`, Vòng đời request `teardown_appcontext`, Quản lý Session cookie an toàn.
-- [ ] **PostgreSQL & Database Design:** `psycopg2` Connection Pooling, Query nâng cao (`JOIN`, `GROUP BY`, `ON CONFLICT DO NOTHING/UPDATE`), Trigger tự động hóa.
-- [ ] **Bảo mật Web:** Mã hóa mật khẩu một chiều với `bcrypt`, Quản lý biến môi trường an toàn `.env`, Xác thực Webhook với HMAC/Signature.
-- [ ] **Thiết kế RESTful API:** Chuẩn hóa mã phản hồi HTTP, Định dạng JSON trả về đồng nhất, Kiểm thử API bằng Postman/Curl.
-- [ ] **Google Gemini AI:** Kỹ thuật Prompt Engineering sinh dữ liệu JSON chuẩn, Persona & Constraint Prompting, Xây dựng cơ chế Offline Fallback chống lỗi mạng.
-- [ ] **Hệ thống Thanh toán:** Tích hợp VietQR, Xử lý Webhook tự động thời gian thực từ ngân hàng (SePay).
-- [ ] **DevOps & Triển khai:** Đóng gói ứng dụng Container với Docker & Docker Compose, Cấu hình WSGI Gunicorn, Triển khai lên PaaS Render.
+- [ ] **Kiến trúc Phần mềm (Architecture):** Thiết kế mô hình **4 Tầng** kết hợp **6 Domain Blueprints độc lập** (Separation of Concerns), nguyên tắc phụ thuộc một chiều, triệt tiêu Circular Import & God Module.
+- [ ] **Python Core:** Context Manager (`@contextmanager`), Decorator nâng cao (`@login_required`, `@debug_access_required`), Lazy Singleton, quản lý cấu hình tập trung (`backend/config.py`).
+- [ ] **Flask Framework:** Mẫu **Application Factory (`create_app`)**, **Flask Blueprints**, Request Context `g`, vòng đời `teardown_appcontext`, Session Cookie an toàn.
+- [ ] **PostgreSQL & Database Design:** `ThreadedConnectionPool`, `release_connection` chống leak/aborted transaction, `standalone_db_connection()` cho tác vụ ghi log độc lập, `SAVEPOINT`, `ON CONFLICT`, Trigger `trg_win_rate`.
+- [ ] **Bảo mật Web & Thanh toán:** Băm mật khẩu `bcrypt`, cô lập quyền sở hữu `session_id` / đơn hàng theo `user_id`, xác thực Webhook 3 lớp (`HMAC-SHA256`, `Authorization`, `API Key`), xử lý **Idempotency** chống cộng tiền đúp và khóa Debug routes trên Production.
+- [ ] **Google Gemini AI:** Kỹ thuật Prompt Engineering + kiểm định cấu trúc JSON đầu ra (`_is_valid_question_list`), Persona & Constraint Prompting (MC không lộ đáp án), chiến lược Offline Fallback 100%.
+- [ ] **Kiểm thử & DevOps:** Viết bộ kiểm thử hồi quy End-to-End cho đủ 28 API endpoints, đóng gói Multi-stage Docker & Docker Compose, cấu hình Gunicorn WSGI (`port 5002`) và triển khai Production.
