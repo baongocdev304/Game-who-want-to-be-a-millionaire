@@ -50,11 +50,11 @@ RUN chmod +x /app/docker-entrypoint.sh
 # Chuyển sang user appuser
 USER appuser
 
-# Expose port 5001
-EXPOSE 5001
+# Expose port 5002 (đồng bộ với backend/app.py và docker-compose.yml)
+EXPOSE 5002
 
 # Entrypoint script xử lý wait-for-DB & migration
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
 
-# Lệnh khởi chạy ứng dụng mặc định bằng Gunicorn WSGI Server
-CMD ["gunicorn", "--bind", "0.0.0.0:5001", "--workers", "3", "--threads", "2", "--timeout", "120", "app:app"]
+# Dùng 1 worker + nhiều threads để chia sẻ in-memory game sessions cho đến khi nâng cấp Redis
+CMD ["gunicorn", "--bind", "0.0.0.0:5002", "--workers", "1", "--threads", "4", "--timeout", "120", "app:app"]

@@ -14,7 +14,7 @@ const PRIZE_LEVELS = [
     "3.000.000 đ", "6.000.000 đ", "10.000.000 đ", "14.000.000 đ", "22.000.000 đ",
     "30.000.000 đ", "40.000.000 đ", "60.000.000 đ", "85.000.000 đ", "150.000.000 đ"
 ];
-const MILESTONES = [4, 9]; // Mốc an toàn
+const MILESTONES = [4, 9, 14]; // Mốc an toàn (0-indexed: câu 5, 10, 15)
 
 // === BIẾN TRẠNG THÁI ===
 let sessionId = '';           // ID phiên chơi từ server

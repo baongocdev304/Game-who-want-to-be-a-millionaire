@@ -54,7 +54,7 @@ services:
     image: ngrok/ngrok:latest
     container_name: millionaire_ngrok
     restart: unless-stopped
-    command: http web:5001
+    command: http web:5002
     ports:
       - "4040:4040"
     environment:
